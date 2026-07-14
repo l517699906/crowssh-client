@@ -1,0 +1,107 @@
+/* ------------------------------ 终端标签栏 ------------------------------ */
+.terminal-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 38px;
+  padding: 4px 6px 0;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.terminal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px 0 11px;
+  max-width: 200px;
+  border-radius: var(--r-ctl) var(--r-ctl) 0 0;
+  color: var(--fg-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s, color 0.12s;
+}
+.terminal-tab:hover {
+  background-color: var(--bg-hover);
+}
+.terminal-tab.active {
+  background-color: var(--bg-terminal);
+  color: var(--fg);
+}
+.tab-title {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  opacity: 0.6;
+}
+.tab-close:hover {
+  background-color: var(--bg-active);
+  opacity: 1;
+}
+
+/* 状态点 */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--fg-disabled);
+}
+.status-dot.connected {
+  background-color: var(--success);
+}
+.status-dot.connecting {
+  background-color: var(--warning);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.status-dot.error {
+  background-color: var(--danger);
+}
+.status-dot.disconnected {
+  background-color: var(--fg-disabled);
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ------------------------------ 终端主体 ------------------------------ */
+.terminal-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background-color: var(--bg-terminal);
+  border-radius: 0 0 var(--r-island) var(--r-island);
+  overflow: hidden;
+}
+.terminal-view {
+  position: absolute;
+  inset: 0;
+  padding: 8px 6px 6px 10px;
+}
+.terminal-view .xterm {
+  height: 100%;
+}
+.terminal-view .xterm-viewport {
+  background-color: transparent !important;
+}

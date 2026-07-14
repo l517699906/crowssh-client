@@ -1,0 +1,284 @@
+/* =========================================================================
+   CrowSSH · IntelliJ IDEA "Islands Dark" 主题
+   浮岛逻辑：canvas(缝隙底,稍亮) > island(卡片) > terminal(最深,聚焦)
+   ========================================================================= */
+:root {
+  /* 背景层次 */
+  --bg-canvas: #2b2d30;
+  --bg-island: #1e1f22;
+  --bg-terminal: #191a1c;
+  --bg-elevated: #26282c;
+  --bg-hover: #2e3338;
+  --bg-active: #323438;
+  --bg-selected: #2e436e;
+  --bg-selected-soft: #263141;
+
+  /* 文字 */
+  --fg: #dfe1e5;
+  --fg-muted: #9da0a8;
+  --fg-disabled: #6f737a;
+
+  /* 边框（岛屿本身无边框，仅内部分隔用） */
+  --border: #393b40;
+  --border-subtle: #303235;
+
+  /* 强调（New UI 蓝）与语义色 */
+  --accent: #3574f0;
+  --accent-hover: #4a84f5;
+  --on-accent: #ffffff;
+  --danger: #db5c5c;
+  --danger-hover: #e46b6b;
+  --success: #5fad65;
+  --warning: #d9a343;
+
+  /* 几何 */
+  --r-island: 10px;
+  --r-ctl: 6px;
+  --r-sm: 4px;
+  --gap: 6px;
+
+  /* 字体 */
+  --font-ui: -apple-system, "Segoe UI", system-ui, "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New",
+    monospace;
+
+  color-scheme: dark;
+}
+
+/* ------------------------------ reset ------------------------------ */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background-color: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* ------------------------- 滚动条（Islands 风格，低调） ------------------------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #4b4d52;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #5c5f66;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ------------------------------ 岛屿卡片 ------------------------------ */
+.island {
+  background-color: var(--bg-island);
+  border-radius: var(--r-island);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* 面板标题栏 */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 38px;
+  padding: 0 8px 0 12px;
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ------------------------------ 通用控件 ------------------------------ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background-color: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 13px;
+  transition: background-color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.btn:hover {
+  background-color: var(--bg-hover);
+  border-color: #4b4d52;
+}
+.btn:active {
+  background-color: var(--bg-active);
+}
+.btn:disabled {
+  color: var(--fg-disabled);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.btn-danger {
+  background-color: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background-color: var(--danger);
+  color: var(--on-accent);
+}
+
+/* 图标按钮 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--r-sm);
+  background-color: transparent;
+  color: var(--fg-muted);
+  transition: background-color 0.12s, color 0.12s;
+}
+.icon-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--fg);
+}
+.icon-btn.danger:hover {
+  background-color: var(--danger);
+  color: var(--on-accent);
+}
+
+/* 表单字段 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.field-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.input,
+.textarea,
+.select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background-color: var(--bg-terminal);
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.12s;
+  user-select: text;
+}
+.input:focus,
+.textarea:focus,
+.select:focus {
+  border-color: var(--accent);
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--fg-disabled);
+}
+.textarea {
+  resize: none;
+}
+.select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239da0a8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+
+/* 复选框行 */
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--fg);
+  font-size: 13px;
+}
+.checkbox-row input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 空态 */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--fg-disabled);
+  padding: 24px;
+  text-align: center;
+}
+.empty-state .empty-title {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+.empty-state .empty-hint {
+  font-size: 12px;
+}

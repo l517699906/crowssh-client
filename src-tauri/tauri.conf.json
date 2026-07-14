@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "crowssh-client",
-        "width": 800,
-        "height": 600
+        "title": "CrowSSH",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1000,
+        "minHeight": 640
       }
     ],
     "security": {

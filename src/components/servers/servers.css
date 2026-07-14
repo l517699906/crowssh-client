@@ -1,0 +1,124 @@
+/* ------------------------------ 服务器列表 ------------------------------ */
+.server-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 6px 8px;
+}
+
+.server-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+.server-item:hover {
+  background-color: var(--bg-hover);
+}
+.server-item-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.server-info {
+  flex: 1;
+  min-width: 0;
+}
+.server-name {
+  font-size: 13px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.server-addr {
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+.server-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.server-item:hover .server-actions {
+  display: flex;
+}
+
+/* ------------------------------ 模态对话框 ------------------------------ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(1px);
+}
+.modal-card {
+  width: 440px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-island);
+  border: 1px solid var(--border);
+  border-radius: var(--r-island);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.modal-body {
+  padding: 16px;
+  overflow-y: auto;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+
+/* 分段控件（认证方式切换） */
+.segmented {
+  display: flex;
+  background-color: var(--bg-terminal);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  padding: 2px;
+  gap: 2px;
+}
+.segmented button {
+  flex: 1;
+  height: 26px;
+  border: none;
+  border-radius: var(--r-sm);
+  background-color: transparent;
+  color: var(--fg-muted);
+  font-size: 13px;
+  transition: background-color 0.12s, color 0.12s;
+}
+.segmented button.active {
+  background-color: var(--accent);
+  color: var(--on-accent);
+}

@@ -1,51 +1,44 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useServers } from "./hooks/useServers";
+import { useTerminals } from "./hooks/useTerminals";
+import { Splitter } from "./components/layout/Splitter";
+import { ServerPanel } from "./components/servers/ServerPanel";
+import { TerminalPanel } from "./components/terminal/TerminalPanel";
+import { ChatPanel } from "./components/chat/ChatPanel";
+import "./components/layout/layout.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+const clamp = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, v));
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+export default function App() {
+  const { servers, addServer, updateServer, removeServer } = useServers();
+  const terminals = useTerminals();
+  const [leftW, setLeftW] = useState(260);
+  const [rightW, setRightW] = useState(360);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+    <div className="app-shell">
+      <aside className="island" style={{ width: leftW, flexShrink: 0 }}>
+        <ServerPanel
+          servers={servers}
+          addServer={addServer}
+          updateServer={updateServer}
+          removeServer={removeServer}
+          onConnect={terminals.openSession}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      </aside>
+
+      <Splitter onResize={(dx) => setLeftW((w) => clamp(w + dx, 180, 480))} />
+
+      <main className="island" style={{ flex: 1, minWidth: 0 }}>
+        <TerminalPanel terminals={terminals} servers={servers} />
+      </main>
+
+      <Splitter onResize={(dx) => setRightW((w) => clamp(w - dx, 300, 600))} />
+
+      <aside className="island" style={{ width: rightW, flexShrink: 0 }}>
+        <ChatPanel />
+      </aside>
+    </div>
   );
 }
-
-export default App;
