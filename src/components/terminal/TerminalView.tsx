@@ -5,6 +5,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { AuthArg, ServerConfig, SessionStatus, TerminalSession } from "../../types";
+import { useThemeStore } from "../../store/themeStore";
+import { buildXtermTheme } from "../../theme/themes";
 
 interface Props {
   session: TerminalSession;
@@ -12,30 +14,6 @@ interface Props {
   visible: boolean;
   setStatus: (id: string, status: SessionStatus, error?: string) => void;
 }
-
-const TERMINAL_THEME = {
-  background: "#191a1c",
-  foreground: "#dfe1e5",
-  cursor: "#dfe1e5",
-  cursorAccent: "#191a1c",
-  selectionBackground: "#2e436e",
-  black: "#3f4451",
-  red: "#e06c75",
-  green: "#98c379",
-  yellow: "#e5c07b",
-  blue: "#61afef",
-  magenta: "#c678dd",
-  cyan: "#56b6c2",
-  white: "#abb2bf",
-  brightBlack: "#4b5263",
-  brightRed: "#e06c75",
-  brightGreen: "#98c379",
-  brightYellow: "#e5c07b",
-  brightBlue: "#61afef",
-  brightMagenta: "#c678dd",
-  brightCyan: "#56b6c2",
-  brightWhite: "#dfe1e5",
-};
 
 function buildAuth(server: ServerConfig): AuthArg {
   return server.authType === "password"
@@ -52,6 +30,7 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const startedRef = useRef(false); // 防 React StrictMode 开发期双连接
+  const termTokens = useThemeStore((s) => s.tokens.terminal);
 
   useEffect(() => {
     if (startedRef.current || !hostRef.current) return;
@@ -63,7 +42,7 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
       lineHeight: 1.2,
       cursorBlink: true,
       scrollback: 5000,
-      theme: TERMINAL_THEME,
+      theme: buildXtermTheme(useThemeStore.getState().tokens.terminal),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -149,6 +128,13 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
       }
     });
   }, [visible, session.id]);
+
+  // 主题切换 -> 刷新 xterm 配色（无需重连）
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.theme = buildXtermTheme(termTokens);
+    }
+  }, [termTokens]);
 
   return (
     <div

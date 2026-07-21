@@ -76,38 +76,95 @@
 /* ------------------------------ 输入区 ------------------------------ */
 .chat-input-area {
   flex-shrink: 0;
-  padding: 8px 10px 10px;
-  border-top: 1px solid var(--border-subtle);
+  padding: 10px;
+}
+
+/* 一体式 composer：输入区在上，底部一栏（左模型选择 / 右发送） */
+.chat-composer {
+  height: 200px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  background-color: var(--bg-terminal);
+  border: 1px solid var(--border);
+  border-radius: var(--r-island);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.chat-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--bg-selected-soft);
 }
-.agent-select {
-  width: auto;
-  height: 28px;
-  padding: 0 26px 0 10px;
-  font-size: 12px;
-}
-.chat-input-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
+
 .chat-textarea {
   flex: 1;
-  min-height: 36px;
-  max-height: 140px;
-  line-height: 1.5;
-  overflow-y: auto;
+  min-height: 0;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  user-select: text;
 }
-.send-btn {
+.chat-textarea::placeholder {
+  color: var(--fg-disabled);
+}
+
+.chat-composer-footer {
   flex-shrink: 0;
-  width: 40px;
-  height: 36px;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 模型选择：无边框轻量样式，融入 composer
+   用 .chat-composer-footer 前缀提高特异性，压过 theme.css 的 .select 基样式 */
+.chat-composer-footer .agent-select {
+  width: auto;
+  max-width: 160px;
+  height: 30px;
+  padding: 0 28px 0 10px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  background-color: transparent;
+  border-color: transparent;
+}
+.chat-composer-footer .agent-select:hover {
+  background-color: var(--bg-hover);
+  color: var(--fg);
+}
+.chat-composer-footer .agent-select:focus {
+  border-color: transparent;
+}
+
+/* 发送按钮：圆形强调色 */
+.chat-send-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: var(--on-accent);
+  transition: background-color 0.12s, transform 0.08s;
+}
+.chat-send-btn:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+.chat-send-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.chat-send-btn:disabled {
+  background-color: var(--bg-active);
+  color: var(--fg-disabled);
+  cursor: not-allowed;
 }

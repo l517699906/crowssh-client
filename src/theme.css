@@ -3,33 +3,8 @@
    浮岛逻辑：canvas(缝隙底,稍亮) > island(卡片) > terminal(最深,聚焦)
    ========================================================================= */
 :root {
-  /* 背景层次 */
-  --bg-canvas: #2b2d30;
-  --bg-island: #1e1f22;
-  --bg-terminal: #191a1c;
-  --bg-elevated: #26282c;
-  --bg-hover: #2e3338;
-  --bg-active: #323438;
-  --bg-selected: #2e436e;
-  --bg-selected-soft: #263141;
-
-  /* 文字 */
-  --fg: #dfe1e5;
-  --fg-muted: #9da0a8;
-  --fg-disabled: #6f737a;
-
-  /* 边框（岛屿本身无边框，仅内部分隔用） */
-  --border: #393b40;
-  --border-subtle: #303235;
-
-  /* 强调（New UI 蓝）与语义色 */
-  --accent: #3574f0;
-  --accent-hover: #4a84f5;
-  --on-accent: #ffffff;
-  --danger: #db5c5c;
-  --danger-hover: #e46b6b;
-  --success: #5fad65;
-  --warning: #d9a343;
+  /* 颜色变量由 themeStore 运行时注入到 :root（见 theme/themes.ts applyTokens）。
+     此处仅保留几何与字体等与主题无关的常量。 */
 
   /* 几何 */
   --r-island: 10px;
@@ -42,8 +17,6 @@
     "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New",
     monospace;
-
-  color-scheme: dark;
 }
 
 /* ------------------------------ reset ------------------------------ */
@@ -89,13 +62,13 @@ select {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: #4b4d52;
+  background-color: var(--border);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #5c5f66;
+  background-color: var(--fg-disabled);
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
