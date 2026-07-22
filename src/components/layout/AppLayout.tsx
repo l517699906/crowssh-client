@@ -10,6 +10,7 @@ import { RightSidebar } from "./RightSidebar";
 import { Splitter } from "./Splitter";
 import { TerminalPanel } from "../terminal/TerminalPanel";
 import { ServerFormDialog } from "../servers/ServerFormDialog";
+import "./layout.css";
 import "./workbench.css";
 
 type Dialog = { mode: "add" } | { mode: "edit"; server: ServerConfig } | null;

@@ -12,13 +12,3 @@
   position: relative;
   z-index: 1;
 }
-.splitter::after {
-  content: "";
-  position: absolute;
-  inset: 0 1px;
-  border-radius: 2px;
-  transition: background-color 0.15s;
-}
-.splitter:hover::after {
-  background-color: var(--accent);
-}

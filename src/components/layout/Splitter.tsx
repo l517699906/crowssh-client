@@ -10,7 +10,6 @@ export function Splitter({ onResize }: { onResize: (dx: number) => void }) {
 
     const move = (ev: MouseEvent) => {
       onResize(ev.clientX - startX.current);
-      startX.current = ev.clientX;
     };
     const up = () => {
       document.removeEventListener("mousemove", move);
