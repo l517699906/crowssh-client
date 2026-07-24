@@ -56,6 +56,18 @@
   border-top-right-radius: 3px;
 }
 
+.msg-row.ai .msg-bubble.error {
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.chat-status {
+  flex-shrink: 0;
+  margin: 0 10px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 /* 打字光标 */
 .typing-caret {
   display: inline-block;

@@ -5,7 +5,7 @@ interface Props {
   servers: ServerConfig[];
   onConnect: (s: ServerConfig) => void;
   onEdit: (s: ServerConfig) => void;
-  onRemove: (id: string) => void;
+  onRemove: (id: string) => Promise<boolean>;
 }
 
 export function ServerList({ servers, onConnect, onEdit, onRemove }: Props) {
@@ -41,7 +41,9 @@ export function ServerList({ servers, onConnect, onEdit, onRemove }: Props) {
               title="删除"
               onClick={(e) => {
                 e.stopPropagation();
-                onRemove(s.id);
+                if (window.confirm(`确认删除 SSH 连接“${s.name}”吗？`)) {
+                  void onRemove(s.id);
+                }
               }}
             >
               <Trash2 size={14} />

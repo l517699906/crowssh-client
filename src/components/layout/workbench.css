@@ -129,13 +129,15 @@
   position: absolute;
   left: 48px;
   bottom: 0;
-  width: 200px;
+  width: 300px;
   padding: 12px;
   background-color: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--r-island);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 200;
+  max-height: calc(100vh - 52px);
+  overflow-y: auto;
 }
 .settings-title {
   font-size: 11px;
@@ -149,4 +151,42 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
+}
+
+.settings-section {
+  margin-top: 16px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.settings-actions .btn {
+  flex: 1;
+}
+
+.settings-bottom-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-bottom-action .btn {
+  width: 100%;
+}
+
+.settings-status {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }

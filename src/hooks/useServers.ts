@@ -1,40 +1,163 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ServerConfig } from "../types";
-import { load, save, uid } from "../lib/storage";
+import * as sshApi from "../api/sshConnection";
+import type { SshConnectionDTO, SshConnectionPayload } from "../api/sshConnection";
+import { useSettingsStore } from "../store/settingsStore";
 
-const KEY = "servers";
+interface SessionCredentials {
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+}
 
-/** 写入 localStorage 前，按「保存密码」开关剥离敏感字段 */
-function sanitize(list: ServerConfig[]): ServerConfig[] {
-  return list.map((s) =>
-    s.savePassword
-      ? s
-      : { ...s, password: undefined, privateKey: undefined, passphrase: undefined },
-  );
+type CredentialMap = Record<string, SessionCredentials>;
+
+function toServerConfig(dto: SshConnectionDTO, credentials: CredentialMap): ServerConfig {
+  const local = credentials[dto.connectionId];
+  return {
+    id: dto.connectionId,
+    name: dto.connectionName,
+    host: dto.host,
+    port: dto.port,
+    username: dto.username,
+    authType: dto.authType === 2 ? "key" : "password",
+    password: local?.password,
+    privateKey: local?.privateKey,
+    passphrase: local?.passphrase,
+    savePassword: Boolean(local),
+  };
+}
+
+function toPayload(config: ServerConfig | Omit<ServerConfig, "id">, userId: string): SshConnectionPayload {
+  return {
+    ...("id" in config ? { connectionId: config.id } : {}),
+    connectionName: config.name,
+    host: config.host,
+    port: config.port,
+    username: config.username,
+    authType: config.authType === "key" ? 2 : 1,
+    password: config.authType === "password" ? config.password || undefined : undefined,
+    privateKey: config.authType === "key" ? config.privateKey || undefined : undefined,
+    userId,
+  };
+}
+
+function toSessionCredentials(config: ServerConfig | Omit<ServerConfig, "id">): SessionCredentials | null {
+  if (!config.savePassword) return null;
+  if (config.authType === "password") {
+    return config.password ? { password: config.password } : null;
+  }
+  return config.privateKey
+    ? { privateKey: config.privateKey, passphrase: config.passphrase }
+    : null;
 }
 
 export function useServers() {
-  const [servers, setServers] = useState<ServerConfig[]>(() =>
-    load<ServerConfig[]>(KEY, []),
+  const userId = useSettingsStore((state) => state.userId);
+  const serverUrl = useSettingsStore((state) => state.serverUrl);
+  const credentialsRef = useRef<CredentialMap>({});
+  const [servers, setServers] = useState<ServerConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const rememberCredentials = useCallback(
+    (connectionId: string, config: ServerConfig | Omit<ServerConfig, "id">) => {
+      const credentials = toSessionCredentials(config);
+      if (credentials) {
+        credentialsRef.current = { ...credentialsRef.current, [connectionId]: credentials };
+        return;
+      }
+      const { [connectionId]: _, ...next } = credentialsRef.current;
+      credentialsRef.current = next;
+    },
+    [],
   );
 
+  const forgetCredentials = useCallback((connectionId: string) => {
+    const { [connectionId]: _, ...next } = credentialsRef.current;
+    credentialsRef.current = next;
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const response = await sshApi.getConnectionList(userId);
+    if (response.code === "0000") {
+      setServers((response.data ?? []).map((item) => toServerConfig(item, credentialsRef.current)));
+    } else {
+      setError(response.info || "无法读取服务端连接列表");
+    }
+    setLoading(false);
+  }, [userId]);
+
   useEffect(() => {
-    save(KEY, sanitize(servers));
-  }, [servers]);
+    void refresh();
+  }, [refresh, serverUrl]);
 
-  const addServer = useCallback((cfg: Omit<ServerConfig, "id">) => {
-    const server: ServerConfig = { ...cfg, id: uid() };
-    setServers((prev) => [...prev, server]);
-    return server;
+  const addServer = useCallback(
+    async (config: Omit<ServerConfig, "id">): Promise<boolean> => {
+      setError(null);
+      const response = await sshApi.createConnection(toPayload(config, userId));
+      if (response.code !== "0000" || !response.data) {
+        setError(response.info || "创建连接失败");
+        return false;
+      }
+
+      rememberCredentials(response.data.connectionId, config);
+      const server = toServerConfig(response.data, credentialsRef.current);
+      setServers((current) => [server, ...current]);
+      return true;
+    },
+    [rememberCredentials, userId],
+  );
+
+  const updateServer = useCallback(
+    async (config: ServerConfig): Promise<boolean> => {
+      setError(null);
+      const response = await sshApi.updateConnection(toPayload(config, userId));
+      if (response.code !== "0000" || !response.data) {
+        setError(response.info || "更新连接失败");
+        return false;
+      }
+
+      rememberCredentials(config.id, config);
+      const server = toServerConfig(response.data, credentialsRef.current);
+      setServers((current) => current.map((item) => (item.id === config.id ? server : item)));
+      return true;
+    },
+    [rememberCredentials, userId],
+  );
+
+  const removeServer = useCallback(
+    async (id: string): Promise<boolean> => {
+      setError(null);
+      const response = await sshApi.deleteConnection(id);
+      if (response.code !== "0000") {
+        setError(response.info || "删除连接失败");
+        return false;
+      }
+
+      forgetCredentials(id);
+      setServers((current) => current.filter((item) => item.id !== id));
+      return true;
+    },
+    [forgetCredentials],
+  );
+
+  const hasCredentials = useCallback((server: ServerConfig) => {
+    return server.authType === "password"
+      ? Boolean(server.password)
+      : Boolean(server.privateKey);
   }, []);
 
-  const updateServer = useCallback((cfg: ServerConfig) => {
-    setServers((prev) => prev.map((s) => (s.id === cfg.id ? cfg : s)));
-  }, []);
-
-  const removeServer = useCallback((id: string) => {
-    setServers((prev) => prev.filter((s) => s.id !== id));
-  }, []);
-
-  return { servers, addServer, updateServer, removeServer };
+  return {
+    servers,
+    loading,
+    error,
+    refresh,
+    addServer,
+    updateServer,
+    removeServer,
+    hasCredentials,
+  };
 }

@@ -32,6 +32,7 @@ interface LayoutState extends Persisted {
   toggleRight: () => void;
   setLeftWidth: (w: number) => void;
   setRightWidth: (w: number) => void;
+  reset: () => void;
 }
 
 const init = { ...DEFAULTS, ...load<Partial<Persisted>>(KEY, {}) };
@@ -95,5 +96,10 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       const n = { rightWidth: clamp(w, 300, 600) };
       persist({ ...s, ...n });
       return n;
+    }),
+  reset: () =>
+    set((s) => {
+      persist({ ...s, ...DEFAULTS });
+      return DEFAULTS;
     }),
 }));

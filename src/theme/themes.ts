@@ -32,11 +32,11 @@ export const islandsDark: ThemeTokens = {
 };
 
 export const islandsLight: ThemeTokens = {
-  // Islands Light 浮岛逻辑：缝隙(canvas)比岛屿更深，岛屿/编辑器更亮
-  bgCanvas: "#d4d6db", bgIsland: "#ffffff", bgTerminal: "#fafafa", bgElevated: "#f2f3f5",
-  bgHover: "#e8eaed", bgActive: "#dcdee3", bgSelected: "#c2d6f7", bgSelectedSoft: "#e3ecfb",
-  fg: "#1e1f22", fgMuted: "#6c707e", fgDisabled: "#a8adbd",
-  border: "#c4c7d0", borderSubtle: "#dfe1e5",
+  // Islands Light：保持岛屿与画布的层级，同时降低大面积灰色的压迫感。
+  bgCanvas: "#e7e9ed", bgIsland: "#ffffff", bgTerminal: "#fdfdfe", bgElevated: "#f7f8fa",
+  bgHover: "#eef0f3", bgActive: "#e4e7eb", bgSelected: "#d9e6fb", bgSelectedSoft: "#edf3fc",
+  fg: "#1e1f22", fgMuted: "#6c707e", fgDisabled: "#b4b9c4",
+  border: "#d8dbe2", borderSubtle: "#e9ebef",
   accent: "#3574f0", accentHover: "#2f68d8", onAccent: "#ffffff",
   danger: "#d64c4c", dangerHover: "#c23e3e", success: "#4a9b52", warning: "#c48a1e",
   terminal: {

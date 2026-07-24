@@ -55,6 +55,70 @@ impl client::Handler for ClientHandler {
     }
 }
 
+async fn authenticate(
+    handle: &mut Handle<ClientHandler>,
+    username: String,
+    auth: AuthArg,
+) -> Result<(), String> {
+    let authed = match auth {
+        AuthArg::Password { password } => handle
+            .authenticate_password(username, password)
+            .await
+            .map_err(|e| format!("认证出错: {e}"))?
+            .success(),
+        AuthArg::Key {
+            private_key,
+            passphrase,
+        } => {
+            let key = decode_secret_key(&private_key, passphrase.as_deref())
+                .map_err(|e| format!("私钥解析失败: {e}"))?;
+            let alg = handle
+                .best_supported_rsa_hash()
+                .await
+                .ok()
+                .flatten()
+                .flatten();
+            handle
+                .authenticate_publickey(username, PrivateKeyWithHashAlg::new(Arc::new(key), alg))
+                .await
+                .map_err(|e| format!("认证出错: {e}"))?
+                .success()
+        }
+    };
+
+    if !authed {
+        return Err("认证失败：用户名、密码或私钥不正确".into());
+    }
+    Ok(())
+}
+
+/// 使用表单草稿验证 SSH 连通性与认证，不创建终端会话。
+#[tauri::command]
+pub async fn ssh_test_connection(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthArg,
+) -> Result<(), String> {
+    let config = Arc::new(client::Config {
+        inactivity_timeout: None,
+        ..Default::default()
+    });
+    let mut handle = tokio::time::timeout(
+        Duration::from_secs(10),
+        client::connect(config, (host.as_str(), port), ClientHandler),
+    )
+    .await
+    .map_err(|_| "连接超时（10 秒）")?
+    .map_err(|e| format!("连接失败: {e}"))?;
+
+    authenticate(&mut handle, username, auth).await?;
+    let _ = handle
+        .disconnect(Disconnect::ByApplication, "connection test complete", "en")
+        .await;
+    Ok(())
+}
+
 /// 建立连接并开启交互式 shell
 #[tauri::command]
 pub async fn ssh_connect(
@@ -81,34 +145,7 @@ pub async fn ssh_connect(
             .await
             .map_err(|e| format!("连接失败: {e}"))?;
 
-    let authed = match auth {
-        AuthArg::Password { password } => handle
-            .authenticate_password(username, password)
-            .await
-            .map_err(|e| format!("认证出错: {e}"))?
-            .success(),
-        AuthArg::Key {
-            private_key,
-            passphrase,
-        } => {
-            let key = decode_secret_key(&private_key, passphrase.as_deref())
-                .map_err(|e| format!("私钥解析失败: {e}"))?;
-            let alg = handle
-                .best_supported_rsa_hash()
-                .await
-                .ok()
-                .flatten()
-                .flatten();
-            handle
-                .authenticate_publickey(username, PrivateKeyWithHashAlg::new(Arc::new(key), alg))
-                .await
-                .map_err(|e| format!("认证出错: {e}"))?
-                .success()
-        }
-    };
-    if !authed {
-        return Err("认证失败：用户名、密码或密钥不正确".into());
-    }
+    authenticate(&mut handle, username, auth).await?;
 
     // 打开会话通道，请求 PTY + 交互式登录 shell
     let channel = handle

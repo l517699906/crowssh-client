@@ -1,11 +1,11 @@
 import { Sparkles, SquarePen } from "lucide-react";
-import { AGENTS, useChat } from "../../hooks/useChat";
+import { useChat } from "../../hooks/useChat";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import "./chat.css";
 
 export function ChatPanel() {
-  const { active, newConversation, setAgent, sendMessage } = useChat();
+  const { active, agents, error, loadingAgents, newConversation, setAgent, sendMessage, sending } = useChat();
 
   return (
     <>
@@ -13,17 +13,20 @@ export function ChatPanel() {
         <span className="panel-title">
           <Sparkles size={14} /> AI 助手
         </span>
-        <button className="icon-btn" title="新建对话" onClick={newConversation}>
+        <button className="icon-btn" title="新建对话" onClick={newConversation} disabled={!agents.length}>
           <SquarePen size={16} />
         </button>
       </div>
 
       <MessageList messages={active?.messages ?? []} />
+      {error && <div className="chat-status" role="alert">{error}</div>}
 
       <ChatInput
-        agentId={active?.agentId ?? AGENTS[0].id}
+        agents={agents}
+        agentId={active?.agentId ?? ""}
         onAgentChange={setAgent}
         onSend={sendMessage}
+        disabled={loadingAgents || !agents.length || sending}
       />
     </>
   );

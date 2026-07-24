@@ -24,10 +24,16 @@ export function AppLayout({ servers, terminals }: Props) {
   const layout = useLayoutStore();
   const [dialog, setDialog] = useState<Dialog>(null);
 
-  const handleSave = (cfg: ServerConfig | Omit<ServerConfig, "id">) => {
-    if ("id" in cfg) servers.updateServer(cfg);
-    else servers.addServer(cfg);
-    setDialog(null);
+  const handleSave = async (cfg: ServerConfig | Omit<ServerConfig, "id">) => {
+    return "id" in cfg ? servers.updateServer(cfg) : servers.addServer(cfg);
+  };
+
+  const handleConnect = (server: ServerConfig) => {
+    if (!servers.hasCredentials(server)) {
+      setDialog({ mode: "edit", server });
+      return;
+    }
+    terminals.openSession(server);
   };
 
   return (
@@ -44,21 +50,29 @@ export function AppLayout({ servers, terminals }: Props) {
             >
               <LeftSidebar
                 servers={servers.servers}
-                onConnect={terminals.openSession}
+                onConnect={handleConnect}
                 onAddServer={() => setDialog({ mode: "add" })}
                 onEditServer={(s) => setDialog({ mode: "edit", server: s })}
                 onRemoveServer={servers.removeServer}
+                loading={servers.loading}
+                error={servers.error}
+                onRefreshServers={() => void servers.refresh()}
               />
             </div>
             <Splitter onResize={(dx) => layout.setLeftWidth(layout.leftWidth + dx)} />
           </>
         )}
 
-        {layout.terminalVisible && (
-          <main className="terminal-region island">
-            <TerminalPanel terminals={terminals} servers={servers.servers} />
-          </main>
-        )}
+        <main
+          className="terminal-region island"
+          style={{ display: layout.terminalVisible ? "flex" : "none" }}
+        >
+          <TerminalPanel
+            terminals={terminals}
+            servers={servers.servers}
+            panelVisible={layout.terminalVisible}
+          />
+        </main>
 
         {layout.rightVisible && (
           <>

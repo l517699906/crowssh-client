@@ -7,6 +7,7 @@ pub fn run() {
         .manage(ssh::AppState::default())
         .invoke_handler(tauri::generate_handler![
             ssh::ssh_connect,
+            ssh::ssh_test_connection,
             ssh::ssh_send_input,
             ssh::ssh_resize,
             ssh::ssh_disconnect

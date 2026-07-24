@@ -10,7 +10,7 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
           <Bot size={15} />
         </div>
       )}
-      <div className="msg-bubble">
+      <div className={`msg-bubble${msg.error ? " error" : ""}`}>
         {msg.content}
         {msg.pending && <span className="typing-caret" />}
       </div>

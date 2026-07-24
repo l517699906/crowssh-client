@@ -43,12 +43,14 @@ export interface ChatMessage {
   content: string;
   createdAt: number;
   pending?: boolean; // AI 回复生成中
+  error?: boolean;
 }
 
 export interface Conversation {
   id: string;
   title: string;
   agentId: string;
+  serverSessionId?: string;
   messages: ChatMessage[];
   createdAt: number;
 }

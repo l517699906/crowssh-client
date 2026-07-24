@@ -10,9 +10,10 @@ import "./terminal.css";
 interface Props {
   terminals: ReturnType<typeof useTerminals>;
   servers: ServerConfig[];
+  panelVisible: boolean;
 }
 
-export function TerminalPanel({ terminals, servers }: Props) {
+export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
   const { sessions, activeId, closeSession, setActive, setStatus } = terminals;
 
   // 快照 session -> server：即使配置被删除，已开会话仍保留连接参数
@@ -62,7 +63,7 @@ export function TerminalPanel({ terminals, servers }: Props) {
                 <TerminalView
                   session={s}
                   server={server}
-                  visible={s.id === activeId}
+                  visible={panelVisible && s.id === activeId}
                   setStatus={setStatus}
                 />
               </ErrorBoundary>

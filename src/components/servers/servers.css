@@ -45,6 +45,26 @@
   gap: 2px;
   flex-shrink: 0;
 }
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.server-error,
+.form-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.server-error {
+  margin: 0 8px 6px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: var(--r-sm);
+  background-color: color-mix(in srgb, var(--danger) 9%, transparent);
+}
 .server-item:hover .server-actions {
   display: flex;
 }
@@ -97,6 +117,34 @@
 .form-row {
   display: flex;
   gap: 10px;
+}
+
+.password-input {
+  position: relative;
+}
+
+.password-input .input {
+  padding-right: 38px;
+}
+
+.password-visibility {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  transform: translateY(-50%);
+}
+
+.form-test-result {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.form-test-result.success {
+  color: var(--success);
+}
+
+.form-test-result.error {
+  color: var(--danger);
 }
 
 /* 分段控件（认证方式切换） */

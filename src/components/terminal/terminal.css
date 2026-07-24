@@ -97,10 +97,11 @@
 .terminal-view {
   position: absolute;
   inset: 0;
-  padding: 8px 6px 6px 10px;
 }
 .terminal-view .xterm {
   height: 100%;
+  padding: 8px 6px 10px 10px;
+  box-sizing: border-box;
 }
 .terminal-view .xterm-viewport {
   background-color: transparent !important;

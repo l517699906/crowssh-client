@@ -9,7 +9,10 @@ interface Props {
   onConnect: (server: ServerConfig) => void;
   onAddServer: () => void;
   onEditServer: (server: ServerConfig) => void;
-  onRemoveServer: (id: string) => void;
+  onRemoveServer: (id: string) => Promise<boolean>;
+  loading: boolean;
+  error: string | null;
+  onRefreshServers: () => void;
 }
 
 export function LeftSidebar({
@@ -18,6 +21,9 @@ export function LeftSidebar({
   onAddServer,
   onEditServer,
   onRemoveServer,
+  loading,
+  error,
+  onRefreshServers,
 }: Props) {
   const activeView = useLayoutStore((s) => s.activeView);
   return (
@@ -29,6 +35,9 @@ export function LeftSidebar({
           onAdd={onAddServer}
           onEdit={onEditServer}
           onRemove={onRemoveServer}
+          loading={loading}
+          error={error}
+          onRefresh={onRefreshServers}
         />
       )}
       {activeView === "files" && <FilesView />}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FolderSync, Folder, Server, Settings } from "lucide-react";
 import { useLayoutStore, type ActivityView } from "../../store/layoutStore";
 import { SettingsPopover } from "./SettingsPopover";
@@ -14,6 +14,7 @@ export function ActivityBar() {
   const leftVisible = useLayoutStore((s) => s.leftVisible);
   const selectActivity = useLayoutStore((s) => s.selectActivity);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="activity-bar">
@@ -32,7 +33,7 @@ export function ActivityBar() {
           );
         })}
       </div>
-      <div className="activity-bottom">
+      <div className="activity-bottom" ref={settingsRef}>
         <button
           className={`activity-item${settingsOpen ? " active" : ""}`}
           title="设置"
@@ -40,7 +41,12 @@ export function ActivityBar() {
         >
           <Settings size={22} strokeWidth={1.6} />
         </button>
-        {settingsOpen && <SettingsPopover onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && (
+          <SettingsPopover
+            anchorRef={settingsRef}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

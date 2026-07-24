@@ -7,6 +7,8 @@ import "@xterm/xterm/css/xterm.css";
 import type { AuthArg, ServerConfig, SessionStatus, TerminalSession } from "../../types";
 import { useThemeStore } from "../../store/themeStore";
 import { buildXtermTheme } from "../../theme/themes";
+import { installTerminalEnhancements } from "./terminalEnhancements";
+import type { TerminalEnhancements } from "./terminalEnhancements";
 
 interface Props {
   session: TerminalSession;
@@ -29,7 +31,8 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const startedRef = useRef(false); // 防 React StrictMode 开发期双连接
+  const enhancementsRef = useRef<TerminalEnhancements | null>(null);
+  const startedRef = useRef(false);
   const termTokens = useThemeStore((s) => s.tokens.terminal);
 
   useEffect(() => {
@@ -37,7 +40,8 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
     startedRef.current = true;
 
     const term = new Terminal({
-      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, monospace',
+      allowProposedApi: true,
+      fontFamily: '"JetBrains Mono", "PingFang SC", "Microsoft YaHei", monospace',
       fontSize: 13,
       lineHeight: 1.2,
       cursorBlink: true,
@@ -50,6 +54,8 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
     fit.fit();
     termRef.current = term;
     fitRef.current = fit;
+    const enhancements = installTerminalEnhancements(term);
+    enhancementsRef.current = enhancements;
 
     // 后端 SSH 输出（原始字节 -> ArrayBuffer -> 交 xterm 解码 UTF-8）
     const onOutput = new Channel<ArrayBuffer>();
@@ -101,6 +107,7 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
 
     return () => {
       dataDisp.dispose();
+      enhancements.dispose();
       ro.disconnect();
       unlisten.then((un) => un());
       invoke("ssh_disconnect", { sessionId: session.id }).catch(() => {});
@@ -134,6 +141,10 @@ export function TerminalView({ session, server, visible, setStatus }: Props) {
     if (termRef.current) {
       termRef.current.options.theme = buildXtermTheme(termTokens);
     }
+  }, [termTokens]);
+
+  useEffect(() => {
+    enhancementsRef.current?.refresh();
   }, [termTokens]);
 
   return (

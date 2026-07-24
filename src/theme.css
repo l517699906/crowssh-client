@@ -1,11 +1,12 @@
-/* =========================================================================
-   CrowSSH · IntelliJ IDEA "Islands Dark" 主题
-   浮岛逻辑：canvas(缝隙底,稍亮) > island(卡片) > terminal(最深,聚焦)
-   ========================================================================= */
-:root {
-  /* 颜色变量由 themeStore 运行时注入到 :root（见 theme/themes.ts applyTokens）。
-     此处仅保留几何与字体等与主题无关的常量。 */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
 
+:root {
   /* 几何 */
   --r-island: 10px;
   --r-ctl: 6px;
@@ -13,10 +14,8 @@
   --gap: 6px;
 
   /* 字体 */
-  --font-ui: -apple-system, "Segoe UI", system-ui, "PingFang SC",
-    "Microsoft YaHei", sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "Courier New",
-    monospace;
+  --font-ui: "JetBrains Mono", "PingFang SC", "Microsoft YaHei", monospace;
+  --font-mono: "JetBrains Mono", "PingFang SC", "Microsoft YaHei", monospace;
 }
 
 /* ------------------------------ reset ------------------------------ */
@@ -48,6 +47,16 @@ body {
 button {
   font-family: inherit;
   cursor: pointer;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 input,

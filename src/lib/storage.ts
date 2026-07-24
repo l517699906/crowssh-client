@@ -19,6 +19,14 @@ export function save<T>(key: string, value: T): void {
   }
 }
 
+export function remove(key: string): void {
+  try {
+    localStorage.removeItem(PREFIX + key);
+  } catch {
+    // 忽略写入失败（隐私模式 / 已禁用存储）
+  }
+}
+
 export const uid = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()

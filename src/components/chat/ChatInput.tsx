@@ -1,20 +1,23 @@
 import { useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { AgentSelect } from "./AgentSelect";
+import type { Agent } from "../../types";
 
 interface Props {
+  agents: Agent[];
   agentId: string;
   onAgentChange: (id: string) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void>;
+  disabled: boolean;
 }
 
-export function ChatInput({ agentId, onAgentChange, onSend }: Props) {
+export function ChatInput({ agents, agentId, onAgentChange, onSend, disabled }: Props) {
   const [text, setText] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const send = () => {
     if (!text.trim()) return;
-    onSend(text);
+    void onSend(text);
     setText("");
     taRef.current?.focus();
   };
@@ -33,16 +36,17 @@ export function ChatInput({ agentId, onAgentChange, onSend }: Props) {
           ref={taRef}
           className="chat-textarea"
           value={text}
-          placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
+          placeholder={disabled ? "正在连接智能体" : "输入消息，Enter 发送 / Shift+Enter 换行"}
+          disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
         />
         <div className="chat-composer-footer">
-          <AgentSelect value={agentId} onChange={onAgentChange} />
+          <AgentSelect value={agentId} agents={agents} onChange={onAgentChange} disabled={disabled} />
           <button
             className="chat-send-btn"
             onClick={send}
-            disabled={!text.trim()}
+            disabled={disabled || !text.trim()}
             title="发送 (Enter)"
           >
             <Send size={17} />
