@@ -48,6 +48,38 @@ export const islandsLight: ThemeTokens = {
   },
 };
 
+export const midnight: ThemeTokens = {
+  bgCanvas: "#161b22", bgIsland: "#0d1117", bgTerminal: "#090c10", bgElevated: "#21262d",
+  bgHover: "#292e36", bgActive: "#30363d", bgSelected: "#1f4b77", bgSelectedSoft: "#172a3d",
+  fg: "#e6edf3", fgMuted: "#8b949e", fgDisabled: "#484f58",
+  border: "#30363d", borderSubtle: "#21262d",
+  accent: "#2f81f7", accentHover: "#58a6ff", onAccent: "#ffffff",
+  danger: "#f85149", dangerHover: "#ff6a63", success: "#3fb950", warning: "#d29922",
+  terminal: {
+    background: "#090c10", foreground: "#e6edf3", cursor: "#e6edf3", selection: "#1f4b77",
+    black: "#484f58", red: "#ff7b72", green: "#7ee787", yellow: "#d2a8ff", blue: "#79c0ff",
+    magenta: "#d2a8ff", cyan: "#a5d6ff", white: "#b1bac4",
+    brightBlack: "#6e7681", brightRed: "#ffa198", brightGreen: "#aff5b4", brightYellow: "#e3b341",
+    brightBlue: "#a5d6ff", brightMagenta: "#d2a8ff", brightCyan: "#b6e3ff", brightWhite: "#f0f6fc",
+  },
+};
+
+export const forest: ThemeTokens = {
+  bgCanvas: "#252a24", bgIsland: "#172018", bgTerminal: "#111812", bgElevated: "#223026",
+  bgHover: "#2b3a2d", bgActive: "#334337", bgSelected: "#315c3d", bgSelectedSoft: "#23382a",
+  fg: "#dce8dd", fgMuted: "#98ad9b", fgDisabled: "#617064",
+  border: "#3b4a3e", borderSubtle: "#2b382e",
+  accent: "#4c9a61", accentHover: "#65b579", onAccent: "#ffffff",
+  danger: "#dc6962", dangerHover: "#e97a73", success: "#6fba78", warning: "#d2a64d",
+  terminal: {
+    background: "#111812", foreground: "#dce8dd", cursor: "#dce8dd", selection: "#315c3d",
+    black: "#465248", red: "#dc6962", green: "#79bd80", yellow: "#d2a64d", blue: "#6aa7c8",
+    magenta: "#ad82c4", cyan: "#62b2a5", white: "#c4d0c5",
+    brightBlack: "#68766a", brightRed: "#e9827c", brightGreen: "#93cf99", brightYellow: "#e0ba68",
+    brightBlue: "#84bbd6", brightMagenta: "#c09bd3", brightCyan: "#7fc8bc", brightWhite: "#edf5ee",
+  },
+};
+
 /** 把色板写入 :root CSS 变量（组件用 var(--xxx)），零重渲染 */
 export function applyTokens(t: ThemeTokens): void {
   const s = document.documentElement.style;
@@ -72,7 +104,13 @@ export function applyTokens(t: ThemeTokens): void {
   s.setProperty("--success", t.success);
   s.setProperty("--warning", t.warning);
   document.documentElement.dataset.theme =
-    t === islandsDark ? "dark" : t === islandsLight ? "light" : "custom";
+    t === islandsDark
+      ? "dark"
+      : t === islandsLight
+        ? "light"
+        : t === midnight
+          ? "midnight"
+          : "forest";
 }
 
 /** ThemeTokens.terminal -> xterm ITheme（selection -> selectionBackground） */

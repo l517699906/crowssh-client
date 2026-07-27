@@ -3,25 +3,36 @@ import {
   applyTokens,
   islandsDark,
   islandsLight,
+  midnight,
+  forest,
   type ThemeTokens,
 } from "../theme/themes";
 import { load, save } from "../lib/storage";
 
-type Mode = "dark" | "light";
+export type ThemeMode = "dark" | "light" | "midnight" | "forest";
 const KEY = "theme.mode";
 
-function tokensFor(mode: Mode): ThemeTokens {
-  return mode === "dark" ? islandsDark : islandsLight;
+function tokensFor(mode: ThemeMode): ThemeTokens {
+  switch (mode) {
+    case "light":
+      return islandsLight;
+    case "midnight":
+      return midnight;
+    case "forest":
+      return forest;
+    default:
+      return islandsDark;
+  }
 }
 
 interface ThemeState {
-  mode: Mode;
+  mode: ThemeMode;
   tokens: ThemeTokens;
-  setMode: (mode: Mode) => void;
+  setMode: (mode: ThemeMode) => void;
   toggleMode: () => void;
 }
 
-const initialMode = load<Mode>(KEY, "dark");
+const initialMode = load<ThemeMode>(KEY, "dark");
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
   mode: initialMode,

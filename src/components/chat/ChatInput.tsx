@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Send } from "lucide-react";
 import { AgentSelect } from "./AgentSelect";
 import type { Agent } from "../../types";
@@ -9,10 +9,11 @@ interface Props {
   onAgentChange: (id: string) => void;
   onSend: (text: string) => void | Promise<void>;
   disabled: boolean;
+  text: string;
+  setText: (text: string) => void;
 }
 
-export function ChatInput({ agents, agentId, onAgentChange, onSend, disabled }: Props) {
-  const [text, setText] = useState("");
+export function ChatInput({ agents, agentId, onAgentChange, onSend, disabled, text, setText }: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const send = () => {

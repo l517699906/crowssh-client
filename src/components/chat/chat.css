@@ -61,6 +61,60 @@
   color: var(--danger);
 }
 
+.msg-bubble code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background-color: var(--bg-terminal);
+  color: var(--accent-hover);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.msg-bubble pre {
+  position: relative;
+  margin: 7px 0;
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background-color: var(--bg-terminal);
+  white-space: pre;
+}
+
+.msg-bubble pre code {
+  padding: 0;
+  background: transparent;
+  color: var(--fg);
+}
+
+.code-language {
+  margin-bottom: 6px;
+  color: var(--fg-disabled);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+}
+
+.quick-prompts {
+  width: min(100%, 260px);
+  display: grid;
+  gap: 6px;
+}
+
+.quick-prompts button {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background-color: var(--bg-elevated);
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-align: left;
+}
+
+.quick-prompts button:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
 .chat-status {
   flex-shrink: 0;
   margin: 0 10px;
@@ -94,12 +148,15 @@
 /* 一体式 composer：输入区在上，底部一栏（左模型选择 / 右发送） */
 .chat-composer {
   height: 200px;
+  min-height: 120px;
+  max-height: 320px;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-terminal);
   border: 1px solid var(--border);
   border-radius: var(--r-island);
   overflow: hidden;
+  resize: vertical;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .chat-composer:focus-within {

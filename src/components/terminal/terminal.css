@@ -85,6 +85,40 @@
   }
 }
 
+.terminal-toolbar {
+  height: 34px;
+  padding: 0 8px 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-terminal);
+}
+
+.terminal-toolbar-info,
+.terminal-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-toolbar-info {
+  min-width: 0;
+  color: var(--fg-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.terminal-status-text {
+  color: var(--fg-disabled);
+}
+
+.terminal-toolbar-actions {
+  flex-shrink: 0;
+}
+
 /* ------------------------------ 终端主体 ------------------------------ */
 .terminal-body {
   flex: 1;

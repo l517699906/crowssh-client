@@ -29,10 +29,6 @@ export function AppLayout({ servers, terminals }: Props) {
   };
 
   const handleConnect = (server: ServerConfig) => {
-    if (!servers.hasCredentials(server)) {
-      setDialog({ mode: "edit", server });
-      return;
-    }
     terminals.openSession(server);
   };
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Sparkles, SquarePen } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { MessageList } from "./MessageList";
@@ -6,6 +7,7 @@ import "./chat.css";
 
 export function ChatPanel() {
   const { active, agents, error, loadingAgents, newConversation, setAgent, sendMessage, sending } = useChat();
+  const [text, setText] = useState("");
 
   return (
     <>
@@ -18,7 +20,7 @@ export function ChatPanel() {
         </button>
       </div>
 
-      <MessageList messages={active?.messages ?? []} />
+      <MessageList messages={active?.messages ?? []} onPromptSelect={setText} />
       {error && <div className="chat-status" role="alert">{error}</div>}
 
       <ChatInput
@@ -27,6 +29,8 @@ export function ChatPanel() {
         onAgentChange={setAgent}
         onSend={sendMessage}
         disabled={loadingAgents || !agents.length || sending}
+        text={text}
+        setText={setText}
       />
     </>
   );

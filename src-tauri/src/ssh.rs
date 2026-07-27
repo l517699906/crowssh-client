@@ -1,13 +1,14 @@
 // CrowSSH · 真实 SSH 交互式终端后端
 // 基于 russh 0.62：连接 -> 认证 -> 请求 PTY + shell -> 拆分读写半 ->
 // 后台 task 把 SSH 输出以原始字节(ArrayBuffer)推给前端，命令处理器负责输入/resize。
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::client::{self, Handle};
 use russh::keys::{decode_secret_key, ssh_key, PrivateKeyWithHashAlg};
-use russh::{ChannelMsg, ChannelWriteHalf, Disconnect};
+use russh::{compression, ChannelMsg, ChannelWriteHalf, Disconnect, Preferred};
 use tauri::async_runtime::JoinHandle;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, State};
@@ -40,18 +41,61 @@ pub struct AppState {
 }
 
 /// SSH 客户端回调处理器
-struct ClientHandler;
+struct ClientHandler {
+    host: String,
+    port: u16,
+    strict_host_key_check: bool,
+}
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    // TODO(安全): 目前接受任意主机密钥，存在 MITM 风险。
-    // 后续应实现 TOFU：比对 known_hosts，首见/不匹配时弹窗确认。
     async fn check_server_key(
         &mut self,
-        _server_public_key: &ssh_key::PublicKey,
+        server_public_key: &ssh_key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        Ok(true)
+        if !self.strict_host_key_check {
+            return Ok(true);
+        }
+
+        Ok(russh::keys::check_known_hosts(
+            &self.host,
+            self.port,
+            server_public_key,
+        )
+        .unwrap_or(false))
+    }
+}
+
+fn client_config(keepalive_interval: Option<u64>, enable_compression: bool) -> client::Config {
+    let preferred = if enable_compression {
+        Preferred {
+            compression: Cow::Owned(vec![
+                compression::ZLIB_LEGACY,
+                compression::ZLIB,
+                compression::NONE,
+            ]),
+            ..Preferred::default()
+        }
+    } else {
+        Preferred::default()
+    };
+
+    client::Config {
+        preferred,
+        inactivity_timeout: None,
+        keepalive_interval: keepalive_interval
+            .filter(|seconds| *seconds > 0)
+            .map(Duration::from_secs),
+        ..Default::default()
+    }
+}
+
+fn client_handler(host: &str, port: u16, strict_host_key_check: bool) -> ClientHandler {
+    ClientHandler {
+        host: host.to_owned(),
+        port,
+        strict_host_key_check,
     }
 }
 
@@ -99,17 +143,21 @@ pub async fn ssh_test_connection(
     port: u16,
     username: String,
     auth: AuthArg,
+    connection_timeout: u64,
+    compression: bool,
+    strict_host_key_check: bool,
 ) -> Result<(), String> {
-    let config = Arc::new(client::Config {
-        inactivity_timeout: None,
-        ..Default::default()
-    });
+    let config = Arc::new(client_config(None, compression));
     let mut handle = tokio::time::timeout(
-        Duration::from_secs(10),
-        client::connect(config, (host.as_str(), port), ClientHandler),
+        Duration::from_secs(connection_timeout.max(1)),
+        client::connect(
+            config,
+            (host.as_str(), port),
+            client_handler(&host, port, strict_host_key_check),
+        ),
     )
     .await
-    .map_err(|_| "连接超时（10 秒）")?
+    .map_err(|_| format!("连接超时（{} 秒）", connection_timeout.max(1)))?
     .map_err(|e| format!("连接失败: {e}"))?;
 
     authenticate(&mut handle, username, auth).await?;
@@ -131,19 +179,27 @@ pub async fn ssh_connect(
     auth: AuthArg,
     cols: u16,
     rows: u16,
+    connection_timeout: u64,
+    keepalive_interval: u64,
+    compression: bool,
+    startup_command: Option<String>,
+    strict_host_key_check: bool,
     on_output: Channel,
 ) -> Result<(), String> {
-    let config = Arc::new(client::Config {
-        inactivity_timeout: None,                          // 交互式 shell 不能被空闲超时杀掉
-        keepalive_interval: Some(Duration::from_secs(30)), // 保持 NAT/防火墙连接
-        ..Default::default()
-    });
+    let config = Arc::new(client_config(Some(keepalive_interval), compression));
 
     // 连接 + 认证：全部在锁之外完成
-    let mut handle: Handle<ClientHandler> =
-        client::connect(config, (host.as_str(), port), ClientHandler)
-            .await
-            .map_err(|e| format!("连接失败: {e}"))?;
+    let mut handle: Handle<ClientHandler> = tokio::time::timeout(
+        Duration::from_secs(connection_timeout.max(1)),
+        client::connect(
+            config,
+            (host.as_str(), port),
+            client_handler(&host, port, strict_host_key_check),
+        ),
+    )
+    .await
+    .map_err(|_| format!("连接超时（{} 秒）", connection_timeout.max(1)))?
+    .map_err(|e| format!("连接失败: {e}"))?;
 
     authenticate(&mut handle, username, auth).await?;
 
@@ -160,6 +216,13 @@ pub async fn ssh_connect(
         .request_shell(true)
         .await
         .map_err(|e| format!("请求 shell 失败: {e}"))?;
+
+    if let Some(command) = startup_command.filter(|command| !command.trim().is_empty()) {
+        channel
+            .data_bytes(format!("{}\n", command.trim()).into_bytes())
+            .await
+            .map_err(|e| format!("发送启动命令失败: {e}"))?;
+    }
 
     let (mut read_half, write_half) = channel.split();
     let writer = Arc::new(write_half);

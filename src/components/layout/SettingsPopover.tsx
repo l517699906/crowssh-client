@@ -1,9 +1,17 @@
 import { useEffect, useState, type RefObject } from "react";
-import { LoaderCircle, Moon, RotateCcw, Server, Sun } from "lucide-react";
+import { LoaderCircle, RotateCcw, Server } from "lucide-react";
 import { checkServerHealth } from "../../api/health";
 import { useSettingsStore } from "../../store/settingsStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useThemeStore } from "../../store/themeStore";
+import type { ThemeMode } from "../../store/themeStore";
+
+const THEME_OPTIONS: { mode: ThemeMode; label: string; color: string }[] = [
+  { mode: "dark", label: "深色", color: "#3574f0" },
+  { mode: "light", label: "浅色", color: "#ffffff" },
+  { mode: "midnight", label: "午夜", color: "#58a6ff" },
+  { mode: "forest", label: "森林", color: "#65b579" },
+];
 
 interface Props {
   onClose: () => void;
@@ -58,19 +66,18 @@ export function SettingsPopover({ onClose, anchorRef }: Props) {
   return (
     <div className="settings-popover" role="dialog" aria-label="设置">
       <div className="settings-title">外观</div>
-      <div className="segmented">
-        <button
-          className={mode === "dark" ? "active" : ""}
-          onClick={() => setMode("dark")}
-        >
-          <Moon size={13} /> 深色
-        </button>
-        <button
-          className={mode === "light" ? "active" : ""}
-          onClick={() => setMode("light")}
-        >
-          <Sun size={13} /> 浅色
-        </button>
+      <div className="theme-grid">
+        {THEME_OPTIONS.map((theme) => (
+          <button
+            key={theme.mode}
+            className={mode === theme.mode ? "active" : ""}
+            type="button"
+            onClick={() => setMode(theme.mode)}
+          >
+            <span className="theme-swatch" style={{ backgroundColor: theme.color }} />
+            {theme.label}
+          </button>
+        ))}
       </div>
 
       <div className="settings-section">

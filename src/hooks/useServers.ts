@@ -3,6 +3,9 @@ import type { ServerConfig } from "../types";
 import * as sshApi from "../api/sshConnection";
 import type { SshConnectionDTO, SshConnectionPayload } from "../api/sshConnection";
 import { useSettingsStore } from "../store/settingsStore";
+import { load, save } from "../lib/storage";
+import { DEFAULT_CONNECTION_OPTIONS } from "../types";
+import type { ConnectionOptions } from "../types";
 
 interface SessionCredentials {
   password?: string;
@@ -11,8 +14,14 @@ interface SessionCredentials {
 }
 
 type CredentialMap = Record<string, SessionCredentials>;
+type ConnectionOptionsMap = Record<string, ConnectionOptions>;
+const OPTIONS_KEY = "server.connection-options.v1";
 
-function toServerConfig(dto: SshConnectionDTO, credentials: CredentialMap): ServerConfig {
+function toServerConfig(
+  dto: SshConnectionDTO,
+  credentials: CredentialMap,
+  options: ConnectionOptionsMap,
+): ServerConfig {
   const local = credentials[dto.connectionId];
   return {
     id: dto.connectionId,
@@ -25,6 +34,8 @@ function toServerConfig(dto: SshConnectionDTO, credentials: CredentialMap): Serv
     privateKey: local?.privateKey,
     passphrase: local?.passphrase,
     savePassword: Boolean(local),
+    ...DEFAULT_CONNECTION_OPTIONS,
+    ...options[dto.connectionId],
   };
 }
 
@@ -39,6 +50,11 @@ function toPayload(config: ServerConfig | Omit<ServerConfig, "id">, userId: stri
     password: config.authType === "password" ? config.password || undefined : undefined,
     privateKey: config.authType === "key" ? config.privateKey || undefined : undefined,
     userId,
+    connectTimeout: config.connectionTimeout,
+    keepaliveInterval: config.keepAliveInterval,
+    startupCommand: config.startupCommand || undefined,
+    compression: config.compression,
+    strictHostKeyCheck: config.strictHostKeyCheck,
   };
 }
 
@@ -56,6 +72,7 @@ export function useServers() {
   const userId = useSettingsStore((state) => state.userId);
   const serverUrl = useSettingsStore((state) => state.serverUrl);
   const credentialsRef = useRef<CredentialMap>({});
+  const optionsRef = useRef<ConnectionOptionsMap>(load<ConnectionOptionsMap>(OPTIONS_KEY, {}));
   const [servers, setServers] = useState<ServerConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,12 +95,39 @@ export function useServers() {
     credentialsRef.current = next;
   }, []);
 
+  const rememberOptions = useCallback(
+    (connectionId: string, config: ServerConfig | Omit<ServerConfig, "id">) => {
+      optionsRef.current = {
+        ...optionsRef.current,
+        [connectionId]: {
+          connectionTimeout: config.connectionTimeout,
+          keepAliveInterval: config.keepAliveInterval,
+          compression: config.compression,
+          startupCommand: config.startupCommand,
+          strictHostKeyCheck: config.strictHostKeyCheck,
+        },
+      };
+      save(OPTIONS_KEY, optionsRef.current);
+    },
+    [],
+  );
+
+  const forgetOptions = useCallback((connectionId: string) => {
+    const { [connectionId]: _, ...next } = optionsRef.current;
+    optionsRef.current = next;
+    save(OPTIONS_KEY, next);
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     const response = await sshApi.getConnectionList(userId);
     if (response.code === "0000") {
-      setServers((response.data ?? []).map((item) => toServerConfig(item, credentialsRef.current)));
+      setServers(
+        (response.data ?? []).map((item) =>
+          toServerConfig(item, credentialsRef.current, optionsRef.current),
+        ),
+      );
     } else {
       setError(response.info || "无法读取服务端连接列表");
     }
@@ -104,11 +148,12 @@ export function useServers() {
       }
 
       rememberCredentials(response.data.connectionId, config);
-      const server = toServerConfig(response.data, credentialsRef.current);
+      rememberOptions(response.data.connectionId, config);
+      const server = toServerConfig(response.data, credentialsRef.current, optionsRef.current);
       setServers((current) => [server, ...current]);
       return true;
     },
-    [rememberCredentials, userId],
+    [rememberCredentials, rememberOptions, userId],
   );
 
   const updateServer = useCallback(
@@ -121,11 +166,12 @@ export function useServers() {
       }
 
       rememberCredentials(config.id, config);
-      const server = toServerConfig(response.data, credentialsRef.current);
+      rememberOptions(config.id, config);
+      const server = toServerConfig(response.data, credentialsRef.current, optionsRef.current);
       setServers((current) => current.map((item) => (item.id === config.id ? server : item)));
       return true;
     },
-    [rememberCredentials, userId],
+    [rememberCredentials, rememberOptions, userId],
   );
 
   const removeServer = useCallback(
@@ -138,10 +184,11 @@ export function useServers() {
       }
 
       forgetCredentials(id);
+      forgetOptions(id);
       setServers((current) => current.filter((item) => item.id !== id));
       return true;
     },
-    [forgetCredentials],
+    [forgetCredentials, forgetOptions],
   );
 
   const hasCredentials = useCallback((server: ServerConfig) => {

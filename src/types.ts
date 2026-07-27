@@ -1,7 +1,22 @@
 // ============ SSH 服务器配置 ============
 export type AuthType = "password" | "key";
 
-export interface ServerConfig {
+export interface ConnectionOptions {
+  connectionTimeout: number;
+  keepAliveInterval: number;
+  compression: boolean;
+  startupCommand?: string;
+  strictHostKeyCheck: boolean;
+}
+
+export const DEFAULT_CONNECTION_OPTIONS: ConnectionOptions = {
+  connectionTimeout: 30,
+  keepAliveInterval: 60,
+  compression: false,
+  strictHostKeyCheck: false,
+};
+
+export interface ServerConfig extends ConnectionOptions {
   id: string;
   name: string; // 别名
   host: string;
@@ -31,6 +46,7 @@ export interface TerminalSession {
   serverId: string;
   title: string;
   status: SessionStatus;
+  generation: number;
   error?: string;
 }
 
