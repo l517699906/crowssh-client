@@ -21,6 +21,7 @@ export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
     closeSession,
     reconnectSession,
     setActive,
+    setBackendSessionId,
     setStatus,
   } = terminals;
 
@@ -38,14 +39,27 @@ export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
   const activeServer = activeSession ? resolve(activeSession) : undefined;
   const canReconnect =
     activeSession?.status === "disconnected" || activeSession?.status === "error";
+  const sessionCountByServer = new Map<string, number>();
+  for (const session of sessions) {
+    sessionCountByServer.set(
+      session.serverId,
+      (sessionCountByServer.get(session.serverId) ?? 0) + 1,
+    );
+  }
+  const isOnlySessionForServer = (session: TerminalSession) =>
+    sessionCountByServer.get(session.serverId) === 1;
 
   const handleReconnect = async (sessionId: string) => {
+    const reconnectingSession = sessions.find((session) => session.id === sessionId);
+    if (!reconnectingSession) return;
     if (reconnectingRef.current.has(sessionId)) return;
     reconnectingRef.current.add(sessionId);
     try {
-      await viewRefs.current.get(sessionId)?.disconnect();
+      await viewRefs.current
+        .get(sessionId)
+        ?.disconnect(isOnlySessionForServer(reconnectingSession));
     } catch {
-      // 新连接会在服务端替换残留的旧连接，仍允许继续重连。
+      // 即使旧 Shell 清理失败，也允许当前标签继续重新建立终端会话。
     }
     reconnectSession(sessionId);
     reconnectingRef.current.delete(sessionId);
@@ -101,7 +115,11 @@ export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
               type="button"
               title="断开连接"
               disabled={activeSession.status !== "connected"}
-              onClick={() => void viewRefs.current.get(activeSession.id)?.disconnect()}
+              onClick={() =>
+                void viewRefs.current
+                  .get(activeSession.id)
+                  ?.disconnect(isOnlySessionForServer(activeSession))
+              }
             >
               <PlugZap size={15} />
             </button>
@@ -143,6 +161,8 @@ export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
                   session={s}
                   server={server}
                   visible={panelVisible && s.id === activeId}
+                  disconnectConnectionOnDispose={isOnlySessionForServer(s)}
+                  setBackendSessionId={setBackendSessionId}
                   setStatus={setStatus}
                 />
               </ErrorBoundary>

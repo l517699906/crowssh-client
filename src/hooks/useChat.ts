@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Agent, ChatMessage, Conversation } from "../types";
 import * as agentApi from "../api/agent";
 import { uid } from "../lib/storage";
@@ -14,7 +14,7 @@ function createConversation(agentId: string): Conversation {
   };
 }
 
-export function useChat() {
+export function useChat(terminalSessionId?: string) {
   const userId = useSettingsStore((state) => state.userId);
   const serverUrl = useSettingsStore((state) => state.serverUrl);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -23,6 +23,7 @@ export function useChat() {
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const active = conversations.find((item) => item.id === activeId) ?? conversations[0] ?? null;
 
@@ -75,6 +76,8 @@ export function useChat() {
       current.map((conversation) => ({ ...conversation, serverSessionId: undefined })),
     );
   }, [userId]);
+
+  useEffect(() => () => streamAbortRef.current?.abort(), []);
 
   const newConversation = useCallback(() => {
     const firstAgent = agents[0];
@@ -160,17 +163,38 @@ export function useChat() {
         );
       }
 
-      const chatResponse = await agentApi.sendChatMessage({
-        agentId: active.agentId,
-        userId,
-        sessionId,
-        message: content,
-      });
-      if (chatResponse.code !== "0000" || !chatResponse.data?.content) {
-        throw new Error(chatResponse.info || "智能体未返回有效内容");
+      const abortController = new AbortController();
+      streamAbortRef.current = abortController;
+      let fullText = "";
+      let toolCompleted = false;
+
+      for await (const event of agentApi.streamChatMessage(
+        {
+          agentId: active.agentId,
+          userId,
+          sessionId,
+          message: content,
+          terminalSessionId,
+        },
+        abortController.signal,
+      )) {
+        if (event.event === "text") {
+          fullText = event.fullText ?? `${fullText}${event.content}`;
+          patchMessage(active.id, assistantMessage.id, { content: fullText });
+        } else if (event.event === "tool_result") {
+          toolCompleted = event.status === "success";
+        } else if (event.event === "done") {
+          fullText = event.content || fullText;
+        } else if (event.event === "error") {
+          throw new Error(event.content || "智能体执行失败");
+        }
+      }
+
+      if (!fullText) {
+        fullText = toolCompleted ? "命令执行完成，请查看终端输出。" : "智能体未返回有效内容";
       }
       patchMessage(active.id, assistantMessage.id, {
-        content: chatResponse.data.content,
+        content: fullText,
         pending: false,
       });
     } catch (reason) {
@@ -182,9 +206,10 @@ export function useChat() {
         error: true,
       });
     } finally {
+      streamAbortRef.current = null;
       setSending(false);
     }
-  }, [active, patchMessage, sending, userId]);
+  }, [active, patchMessage, sending, terminalSessionId, userId]);
 
   return {
     agents,

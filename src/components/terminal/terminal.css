@@ -1,19 +1,53 @@
 /* ------------------------------ 终端标签栏 ------------------------------ */
+.terminal-tabs-shell {
+  display: flex;
+  align-items: stretch;
+  height: 38px;
+  min-width: 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .terminal-tabs {
   display: flex;
   align-items: stretch;
   gap: 2px;
-  height: 38px;
   padding: 4px 6px 0;
-  flex-shrink: 0;
+  min-width: 0;
+  flex: 1;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 .terminal-tabs::-webkit-scrollbar {
   display: none;
 }
 
+.terminal-tabs-scroll {
+  width: 28px;
+  padding: 0;
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0;
+  background-color: var(--bg-panel);
+  color: var(--fg-muted);
+  transition: background-color 0.12s, color 0.12s, opacity 0.12s;
+}
+.terminal-tabs-scroll:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--fg);
+}
+.terminal-tabs-scroll:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 .terminal-tab {
+  flex: 0 0 auto;
+  min-width: 128px;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -33,6 +67,8 @@
   color: var(--fg);
 }
 .tab-title {
+  min-width: 0;
+  flex: 1;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;

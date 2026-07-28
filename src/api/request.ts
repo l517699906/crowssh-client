@@ -149,6 +149,25 @@ export function post<T>(path: string, body?: unknown, params?: Record<string, st
     return request<T>('POST', path, body, params)
 }
 
+/** 发起不设短超时的流式 POST 请求，由调用方负责读取响应体和取消请求。 */
+export async function postStream(path: string, body: unknown, signal?: AbortSignal) {
+    const res = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+    })
+
+    if (!res.ok) {
+        throw new Error(res.statusText || `请求失败 (${res.status})`)
+    }
+    if (!res.body) {
+        throw new Error('服务端未返回流式响应')
+    }
+
+    return res
+}
+
 /** PUT 请求 */
 export function put<T>(path: string, body?: unknown, params?: Record<string, string>) {
     return request<T>('PUT', path, body, params)

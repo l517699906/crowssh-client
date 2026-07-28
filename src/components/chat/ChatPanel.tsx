@@ -3,10 +3,13 @@ import { Sparkles, SquarePen } from "lucide-react";
 import { useChat } from "../../hooks/useChat";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
+import type { TerminalSession } from "../../types";
 import "./chat.css";
 
-export function ChatPanel() {
-  const { active, agents, error, loadingAgents, newConversation, setAgent, sendMessage, sending } = useChat();
+export function ChatPanel({ terminal }: { terminal?: TerminalSession }) {
+  const { active, agents, error, loadingAgents, newConversation, setAgent, sendMessage, sending } = useChat(
+    terminal?.backendSessionId,
+  );
   const [text, setText] = useState("");
 
   return (
@@ -31,6 +34,7 @@ export function ChatPanel() {
         disabled={loadingAgents || !agents.length || sending}
         text={text}
         setText={setText}
+        terminalLabel={terminal?.backendSessionId ? terminal.title : undefined}
       />
     </>
   );

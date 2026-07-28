@@ -23,6 +23,9 @@ interface Props {
 export function AppLayout({ servers, terminals }: Props) {
   const layout = useLayoutStore();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const activeTerminal = terminals.sessions.find(
+    (session) => session.id === terminals.activeId && session.status === "connected",
+  );
 
   const handleSave = async (cfg: ServerConfig | Omit<ServerConfig, "id">) => {
     return "id" in cfg ? servers.updateServer(cfg) : servers.addServer(cfg);
@@ -78,7 +81,7 @@ export function AppLayout({ servers, terminals }: Props) {
             <div
               style={{ width: layout.rightWidth, flexShrink: 0, display: "flex" }}
             >
-              <RightSidebar />
+              <RightSidebar terminal={activeTerminal} />
             </div>
           </>
         )}

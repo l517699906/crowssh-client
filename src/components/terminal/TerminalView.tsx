@@ -26,12 +26,14 @@ interface Props {
   session: TerminalSession;
   server: ServerConfig;
   visible: boolean;
+  disconnectConnectionOnDispose: boolean;
   setStatus: (id: string, status: SessionStatus, error?: string) => void;
+  setBackendSessionId: (id: string, backendSessionId?: string) => void;
 }
 
 export interface TerminalViewHandle {
   clear: () => void;
-  disconnect: () => Promise<void>;
+  disconnect: (disconnectConnection?: boolean) => Promise<void>;
 }
 
 function responseError(info: string | undefined, fallback: string) {
@@ -39,7 +41,14 @@ function responseError(info: string | undefined, fallback: string) {
 }
 
 export const TerminalView = forwardRef<TerminalViewHandle, Props>(function TerminalView(
-  { session, server, visible, setStatus },
+  {
+    session,
+    server,
+    visible,
+    disconnectConnectionOnDispose,
+    setStatus,
+    setBackendSessionId,
+  },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -52,9 +61,12 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
   const inputBufferRef = useRef<string[]>([]);
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSizeRef = useRef({ cols: 0, rows: 0 });
+  const lifecycleRef = useRef(0);
+  const disconnectConnectionOnDisposeRef = useRef(disconnectConnectionOnDispose);
   const stoppedRef = useRef(false);
   const manuallyDisconnectedRef = useRef(false);
   const termTokens = useThemeStore((state) => state.tokens.terminal);
+  disconnectConnectionOnDisposeRef.current = disconnectConnectionOnDispose;
 
   const stopTimers = () => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
@@ -66,22 +78,25 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     inputBufferRef.current = [];
   };
 
-  const disconnect = async () => {
+  const disconnect = async (disconnectConnection = disconnectConnectionOnDisposeRef.current) => {
     stoppedRef.current = true;
     stopTimers();
 
     const backendSessionId = backendSessionIdRef.current;
     backendSessionIdRef.current = null;
+    setBackendSessionId(session.id, undefined);
     const closeResponse = backendSessionId
       ? await closeTerminal(backendSessionId)
       : null;
-    const disconnectResponse = await sshApi.disconnect(server.id);
+    const disconnectResponse = disconnectConnection
+      ? await sshApi.disconnect(server.id)
+      : null;
     manuallyDisconnectedRef.current = true;
 
     if (closeResponse && closeResponse.code !== "0000") {
       throw responseError(closeResponse.info, "关闭终端失败");
     }
-    if (disconnectResponse.code !== "0000") {
+    if (disconnectResponse && disconnectResponse.code !== "0000") {
       throw responseError(disconnectResponse.info, "断开 SSH 连接失败");
     }
   };
@@ -90,9 +105,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     ref,
     () => ({
       clear: () => termRef.current?.clear(),
-      disconnect: async () => {
+      disconnect: async (disconnectConnection) => {
         try {
-          await disconnect();
+          await disconnect(disconnectConnection);
           setStatus(session.id, "disconnected");
           termRef.current?.write("\r\n\x1b[33m[连接已断开]\x1b[0m\r\n");
         } catch (reason) {
@@ -103,11 +118,17 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         }
       },
     }),
-    [server.id, session.id, setStatus],
+    [server.id, session.id, setBackendSessionId, setStatus],
   );
 
   useEffect(() => {
     if (!hostRef.current) return;
+
+    const lifecycleId = lifecycleRef.current + 1;
+    lifecycleRef.current = lifecycleId;
+    let disposed = false;
+    const isCurrentLifecycle = () =>
+      !disposed && lifecycleRef.current === lifecycleId;
 
     stoppedRef.current = false;
     manuallyDisconnectedRef.current = false;
@@ -133,9 +154,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       if (stoppedRef.current) return;
       stoppedRef.current = true;
       stopTimers();
+      setBackendSessionId(session.id, undefined);
       setStatus(session.id, "disconnected");
       term.write(`\r\n\x1b[33m[${message}]\x1b[0m\r\n`);
-      void sshApi.disconnect(server.id);
+      if (disconnectConnectionOnDisposeRef.current) void sshApi.disconnect(server.id);
     };
 
     let pollErrors = 0;
@@ -224,8 +246,13 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         if (connectResponse.code !== "0000") {
           throw responseError(connectResponse.info, "SSH 连接失败");
         }
-        if (stoppedRef.current) {
-          void sshApi.disconnect(server.id);
+        if (!isCurrentLifecycle() || stoppedRef.current) {
+          if (
+            lifecycleRef.current === lifecycleId &&
+            disconnectConnectionOnDisposeRef.current
+          ) {
+            void sshApi.disconnect(server.id);
+          }
           return;
         }
 
@@ -237,31 +264,41 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         if (openResponse.code !== "0000" || !openResponse.data) {
           throw responseError(openResponse.info, "打开终端失败");
         }
-        if (stoppedRef.current) {
+        if (!isCurrentLifecycle() || stoppedRef.current) {
           void closeTerminal(openResponse.data.sessionId);
-          void sshApi.disconnect(server.id);
+          if (
+            lifecycleRef.current === lifecycleId &&
+            disconnectConnectionOnDisposeRef.current
+          ) {
+            void sshApi.disconnect(server.id);
+          }
           return;
         }
 
         backendSessionIdRef.current = openResponse.data.sessionId;
+        setBackendSessionId(session.id, openResponse.data.sessionId);
         if (openResponse.data.initialOutput) term.write(openResponse.data.initialOutput);
         setStatus(session.id, "connected");
         pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
         term.focus();
       } catch (reason) {
-        if (stoppedRef.current) return;
+        if (!isCurrentLifecycle() || stoppedRef.current) return;
         stoppedRef.current = true;
         stopTimers();
+        setBackendSessionId(session.id, undefined);
         const message = reason instanceof Error ? reason.message : String(reason);
         setStatus(session.id, "error", message);
         term.write(`\r\n\x1b[31m连接失败: ${message}\x1b[0m\r\n`);
-        void sshApi.disconnect(server.id);
+        if (disconnectConnectionOnDisposeRef.current) void sshApi.disconnect(server.id);
       }
     };
 
-    void connect();
+    // 允许开发模式或热更新的同步卸载先取消本次初始化，避免重复打开同一服务端终端。
+    const connectTimer = setTimeout(() => void connect(), 0);
 
     return () => {
+      disposed = true;
+      clearTimeout(connectTimer);
       stoppedRef.current = true;
       stopTimers();
       dataDisposable.dispose();
@@ -270,9 +307,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
 
       const backendSessionId = backendSessionIdRef.current;
       backendSessionIdRef.current = null;
+      setBackendSessionId(session.id, undefined);
       if (!manuallyDisconnectedRef.current) {
         if (backendSessionId) void closeTerminal(backendSessionId);
-        void sshApi.disconnect(server.id);
+        if (disconnectConnectionOnDisposeRef.current) void sshApi.disconnect(server.id);
       }
 
       term.dispose();

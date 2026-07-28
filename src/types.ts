@@ -42,11 +42,13 @@ export type SessionStatus =
   | "error";
 
 export interface TerminalSession {
-  id: string; // 会话/tab id（= 后端 session_id）
+  id: string; // 前端会话/tab id
   serverId: string;
+  tabNumber: number;
   title: string;
   status: SessionStatus;
   generation: number;
+  backendSessionId?: string; // 服务端终端会话 id，供 AI 工具绑定当前终端
   error?: string;
 }
 

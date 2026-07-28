@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Send } from "lucide-react";
+import { Send, Terminal } from "lucide-react";
 import { AgentSelect } from "./AgentSelect";
 import type { Agent } from "../../types";
 
@@ -11,9 +11,19 @@ interface Props {
   disabled: boolean;
   text: string;
   setText: (text: string) => void;
+  terminalLabel?: string;
 }
 
-export function ChatInput({ agents, agentId, onAgentChange, onSend, disabled, text, setText }: Props) {
+export function ChatInput({
+  agents,
+  agentId,
+  onAgentChange,
+  onSend,
+  disabled,
+  text,
+  setText,
+  terminalLabel,
+}: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const send = () => {
@@ -43,7 +53,16 @@ export function ChatInput({ agents, agentId, onAgentChange, onSend, disabled, te
           onKeyDown={handleKeyDown}
         />
         <div className="chat-composer-footer">
-          <AgentSelect value={agentId} agents={agents} onChange={onAgentChange} disabled={disabled} />
+          <div className="chat-context-controls">
+            <AgentSelect value={agentId} agents={agents} onChange={onAgentChange} disabled={disabled} />
+            <span
+              className={`chat-terminal-binding${terminalLabel ? " connected" : ""}`}
+              title={terminalLabel ? `已绑定终端：${terminalLabel}` : "未绑定 SSH 终端"}
+            >
+              <Terminal size={13} />
+              <span>{terminalLabel ?? "未绑定终端"}</span>
+            </span>
+          </div>
           <button
             className="chat-send-btn"
             onClick={send}
