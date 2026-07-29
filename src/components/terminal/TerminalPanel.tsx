@@ -12,9 +12,10 @@ interface Props {
   terminals: ReturnType<typeof useTerminals>;
   servers: ServerConfig[];
   panelVisible: boolean;
+  onConnectionReady: () => void;
 }
 
-export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
+export function TerminalPanel({ terminals, servers, panelVisible, onConnectionReady }: Props) {
   const {
     sessions,
     activeId,
@@ -164,6 +165,7 @@ export function TerminalPanel({ terminals, servers, panelVisible }: Props) {
                   disconnectConnectionOnDispose={isOnlySessionForServer(s)}
                   setBackendSessionId={setBackendSessionId}
                   setStatus={setStatus}
+                  onConnected={onConnectionReady}
                 />
               </ErrorBoundary>
             ) : null;

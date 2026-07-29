@@ -26,6 +26,9 @@ export function AppLayout({ servers, terminals }: Props) {
   const activeTerminal = terminals.sessions.find(
     (session) => session.id === terminals.activeId && session.status === "connected",
   );
+  const activeServer = activeTerminal
+    ? servers.servers.find((server) => server.id === activeTerminal.serverId)
+    : undefined;
 
   const handleSave = async (cfg: ServerConfig | Omit<ServerConfig, "id">) => {
     return "id" in cfg ? servers.updateServer(cfg) : servers.addServer(cfg);
@@ -56,6 +59,7 @@ export function AppLayout({ servers, terminals }: Props) {
                 loading={servers.loading}
                 error={servers.error}
                 onRefreshServers={() => void servers.refresh()}
+                activeServer={activeServer}
               />
             </div>
             <Splitter onResize={(dx) => layout.setLeftWidth(layout.leftWidth + dx)} />
@@ -70,6 +74,7 @@ export function AppLayout({ servers, terminals }: Props) {
             terminals={terminals}
             servers={servers.servers}
             panelVisible={layout.terminalVisible}
+            onConnectionReady={() => layout.showActivity("files")}
           />
         </main>
 

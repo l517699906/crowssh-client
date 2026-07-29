@@ -2,7 +2,6 @@ import type { ServerConfig } from "../../types";
 import { useLayoutStore } from "../../store/layoutStore";
 import { ServerView } from "../servers/ServerView";
 import { FilesView } from "../files/FilesView";
-import { SftpView } from "../sftp/SftpView";
 
 interface Props {
   servers: ServerConfig[];
@@ -13,6 +12,7 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRefreshServers: () => void;
+  activeServer?: ServerConfig;
 }
 
 export function LeftSidebar({
@@ -24,6 +24,7 @@ export function LeftSidebar({
   loading,
   error,
   onRefreshServers,
+  activeServer,
 }: Props) {
   const activeView = useLayoutStore((s) => s.activeView);
   return (
@@ -40,8 +41,7 @@ export function LeftSidebar({
           onRefresh={onRefreshServers}
         />
       )}
-      {activeView === "files" && <FilesView />}
-      {activeView === "sftp" && <SftpView />}
+      {activeView === "files" && <FilesView server={activeServer} />}
     </div>
   );
 }

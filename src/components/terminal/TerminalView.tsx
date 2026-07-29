@@ -29,6 +29,7 @@ interface Props {
   disconnectConnectionOnDispose: boolean;
   setStatus: (id: string, status: SessionStatus, error?: string) => void;
   setBackendSessionId: (id: string, backendSessionId?: string) => void;
+  onConnected: () => void;
 }
 
 export interface TerminalViewHandle {
@@ -48,6 +49,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     disconnectConnectionOnDispose,
     setStatus,
     setBackendSessionId,
+    onConnected,
   },
   ref,
 ) {
@@ -279,6 +281,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         setBackendSessionId(session.id, openResponse.data.sessionId);
         if (openResponse.data.initialOutput) term.write(openResponse.data.initialOutput);
         setStatus(session.id, "connected");
+        onConnected();
         pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
         term.focus();
       } catch (reason) {

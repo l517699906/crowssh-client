@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { load, save } from "../lib/storage";
 
-export type ActivityView = "servers" | "files" | "sftp";
+export type ActivityView = "servers" | "files";
 const KEY = "layout.state";
 
 interface Persisted {
@@ -27,6 +27,7 @@ const clamp = (v: number, min: number, max: number) =>
 
 interface LayoutState extends Persisted {
   selectActivity: (v: ActivityView) => void;
+  showActivity: (v: ActivityView) => void;
   toggleLeft: () => void;
   toggleTerminal: () => void;
   toggleRight: () => void;
@@ -35,7 +36,12 @@ interface LayoutState extends Persisted {
   reset: () => void;
 }
 
-const init = { ...DEFAULTS, ...load<Partial<Persisted>>(KEY, {}) };
+const stored = load<Partial<Persisted> & { activeView?: string }>(KEY, {});
+const init: Persisted = {
+  ...DEFAULTS,
+  ...stored,
+  activeView: stored.activeView === "files" ? "files" : "servers",
+};
 
 function persist(s: LayoutState) {
   const {
@@ -64,6 +70,12 @@ export const useLayoutStore = create<LayoutState>((set) => ({
         s.activeView === v && s.leftVisible
           ? { leftVisible: false }
           : { activeView: v, leftVisible: true };
+      persist({ ...s, ...next });
+      return next;
+    }),
+  showActivity: (v) =>
+    set((s) => {
+      const next = { activeView: v, leftVisible: true };
       persist({ ...s, ...next });
       return next;
     }),

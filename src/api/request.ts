@@ -49,6 +49,19 @@ function toRequestBaseUrl(url: string): string {
  */
 let baseUrl = toRequestBaseUrl(readSavedServerUrl() || DEFAULT_SERVER_URL);
 
+export function buildRequestUrl(
+    path: string,
+    params?: Record<string, string>,
+): string {
+    const url = new URL(`${baseUrl}${path}`, window.location.origin)
+    Object.entries(params ?? {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+            url.searchParams.set(key, value)
+        }
+    })
+    return baseUrl ? url.toString() : `${url.pathname}${url.search}`
+}
+
 /** 获取当前服务端地址（显示用，空字符串时返回默认值） */
 export function getBaseUrl(): string {
     return baseUrl || DEFAULT_SERVER_URL;
@@ -104,14 +117,7 @@ async function request<T>(
     params?: Record<string, string>,
 ): Promise<ApiResponse<T>> {
     // 拼接 query string
-    let url = `${baseUrl}${path}`
-    if (params) {
-        const qs = Object.entries(params)
-            .filter(([, v]) => v !== undefined && v !== null && v !== '')
-            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-            .join('&')
-        if (qs) url += `?${qs}`
-    }
+    const url = buildRequestUrl(path, params)
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)

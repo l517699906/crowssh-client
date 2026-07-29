@@ -1,12 +1,11 @@
 import { useRef, useState } from "react";
-import { FolderSync, Folder, Server, Settings } from "lucide-react";
+import { Folder, Server, Settings } from "lucide-react";
 import { useLayoutStore, type ActivityView } from "../../store/layoutStore";
 import { SettingsPopover } from "./SettingsPopover";
 
 const ITEMS: { view: ActivityView; icon: typeof Server; label: string }[] = [
   { view: "servers", icon: Server, label: "服务器" },
-  { view: "files", icon: Folder, label: "文件目录" },
-  { view: "sftp", icon: FolderSync, label: "SFTP 传输" },
+  { view: "files", icon: Folder, label: "远程文件" },
 ];
 
 export function ActivityBar() {
