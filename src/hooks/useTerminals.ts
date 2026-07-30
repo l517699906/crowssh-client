@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ServerConfig, SessionStatus, TerminalSession } from "../types";
 import { uid } from "../lib/storage";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 export function useTerminals() {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
@@ -34,6 +35,7 @@ export function useTerminals() {
   }, []);
 
   const closeSession = useCallback((id: string) => {
+    useWorkspaceStore.getState().removeWorkspace(id);
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
       setActiveId((cur) =>

@@ -144,7 +144,11 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
                 fallback={(msg) => (
                   <div
                     className="terminal-view"
-                    style={{ display: s.id === activeId ? "flex" : "none" }}
+                    style={{
+                      display: "flex",
+                      visibility: s.id === activeId ? "visible" : "hidden",
+                      pointerEvents: s.id === activeId ? "auto" : "none",
+                    }}
                   >
                     <div className="empty-state">
                       <div className="empty-title">终端初始化失败</div>

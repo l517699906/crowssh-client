@@ -60,6 +60,7 @@ export function AppLayout({ servers, terminals }: Props) {
                 error={servers.error}
                 onRefreshServers={() => void servers.refresh()}
                 activeServer={activeServer}
+                activeSessionId={activeTerminal?.id}
               />
             </div>
             <Splitter onResize={(dx) => layout.setLeftWidth(layout.leftWidth + dx)} />

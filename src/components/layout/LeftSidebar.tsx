@@ -13,6 +13,7 @@ interface Props {
   error: string | null;
   onRefreshServers: () => void;
   activeServer?: ServerConfig;
+  activeSessionId?: string;
 }
 
 export function LeftSidebar({
@@ -25,6 +26,7 @@ export function LeftSidebar({
   error,
   onRefreshServers,
   activeServer,
+  activeSessionId,
 }: Props) {
   const activeView = useLayoutStore((s) => s.activeView);
   return (
@@ -41,7 +43,9 @@ export function LeftSidebar({
           onRefresh={onRefreshServers}
         />
       )}
-      {activeView === "files" && <FilesView server={activeServer} />}
+      {activeView === "files" && (
+        <FilesView server={activeServer} activeSessionId={activeSessionId} />
+      )}
     </div>
   );
 }

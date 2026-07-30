@@ -12,6 +12,7 @@ import {
 } from "../../api/terminal";
 import type { ServerConfig, SessionStatus, TerminalSession } from "../../types";
 import { useThemeStore } from "../../store/themeStore";
+import { useWorkspaceStore } from "../../store/workspaceStore";
 import { buildXtermTheme } from "../../theme/themes";
 import { installTerminalEnhancements } from "./terminalEnhancements";
 import type { TerminalEnhancements } from "./terminalEnhancements";
@@ -213,6 +214,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         inputTimerRef.current = setTimeout(() => void flushInput(), INPUT_FLUSH_DELAY);
       }
     });
+    const scrollDisposable = term.onScroll((line) => {
+      useWorkspaceStore.getState().setTerminalViewportLine(session.id, line);
+    });
 
     const sendResize = () => {
       resizeTimerRef.current = null;
@@ -305,6 +309,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       stoppedRef.current = true;
       stopTimers();
       dataDisposable.dispose();
+      scrollDisposable.dispose();
       enhancementsRef.current?.dispose();
       resizeObserver.disconnect();
 
@@ -331,6 +336,9 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     requestAnimationFrame(() => {
       try {
         fitRef.current?.fit();
+        const viewportLine =
+          useWorkspaceStore.getState().workspaces[session.id]?.terminalViewportLine ?? 0;
+        term.scrollToLine(viewportLine);
         const backendSessionId = backendSessionIdRef.current;
         const nextSize = { cols: term.cols, rows: term.rows };
         if (
@@ -363,7 +371,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
   return (
     <div
       className="terminal-view"
-      style={{ display: visible ? "block" : "none" }}
+      style={{
+        visibility: visible ? "visible" : "hidden",
+        pointerEvents: visible ? "auto" : "none",
+      }}
       ref={hostRef}
     />
   );

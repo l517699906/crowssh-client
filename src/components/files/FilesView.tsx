@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   ChevronRight,
   Download,
@@ -16,10 +17,15 @@ import {
   uploadFile,
   type RemoteFile,
 } from "../../api/sftp";
+import {
+  EMPTY_WORKSPACE,
+  useWorkspaceStore,
+} from "../../store/workspaceStore";
 import "./files.css";
 
 interface Props {
   server?: ServerConfig;
+  activeSessionId?: string;
 }
 
 function formatSize(size: number) {
@@ -38,65 +44,101 @@ function parentPath(path: string) {
   return index <= 0 ? "/" : normalized.slice(0, index);
 }
 
-export function FilesView({ server }: Props) {
+export function FilesView({ server, activeSessionId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const requestRef = useRef(0);
-  const [path, setPath] = useState("");
-  const [pathInput, setPathInput] = useState("");
-  const [files, setFiles] = useState<RemoteFile[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [transferring, setTransferring] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const fileListRef = useRef<HTMLDivElement>(null);
+  const connectionId = server?.id;
+  const workspace = useWorkspaceStore(
+    useShallow((state) => {
+      const current = activeSessionId
+        ? state.workspaces[activeSessionId]
+        : undefined;
+      const value = current ?? EMPTY_WORKSPACE;
+      return {
+        path: value.path,
+        pathInput: value.pathInput,
+        files: value.files,
+        loading: value.loading,
+        transferring: value.transferring,
+        initialized: value.initialized,
+        error: value.error,
+      };
+    }),
+  );
+  const { path, pathInput, files, loading, transferring, initialized, error } =
+    workspace;
 
-  const loadDirectory = async (nextPath?: string) => {
-    if (!server) return;
-    const requestId = requestRef.current + 1;
-    requestRef.current = requestId;
-    setLoading(true);
-    setError(null);
-    const response = await listFiles(server.id, nextPath);
-    if (requestRef.current !== requestId) return;
-    setLoading(false);
-    if (response.code !== "0000" || !response.data) {
-      setError(response.info || "读取远程目录失败");
-      return;
-    }
-    setPath(response.data.path);
-    setPathInput(response.data.path);
-    setFiles(response.data.files);
-  };
+  const loadDirectory = useCallback(
+    async (nextPath?: string) => {
+      if (!connectionId || !activeSessionId) return;
+      const store = useWorkspaceStore.getState();
+      const requestId = store.beginFileRequest(activeSessionId);
+      try {
+        const response = await listFiles(connectionId, nextPath);
+        const current = useWorkspaceStore.getState().workspaces[activeSessionId];
+        if (!current || current.requestId !== requestId) return;
+        if (response.code !== "0000" || !response.data) {
+          useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+            loading: false,
+            error: response.info || "读取远程目录失败",
+          });
+          return;
+        }
+        const keepScrollPosition = response.data.path === current.path;
+        useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+          path: response.data.path,
+          pathInput: response.data.path,
+          files: response.data.files,
+          loading: false,
+          error: null,
+          fileScrollTop: keepScrollPosition ? current.fileScrollTop : 0,
+        });
+      } catch (reason) {
+        const current = useWorkspaceStore.getState().workspaces[activeSessionId];
+        if (!current || current.requestId !== requestId) return;
+        useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+          loading: false,
+          error: reason instanceof Error ? reason.message : String(reason),
+        });
+      }
+    },
+    [activeSessionId, connectionId],
+  );
 
   useEffect(() => {
-    setPath("");
-    setPathInput("");
-    setFiles([]);
-    setError(null);
-    if (server) void loadDirectory();
-    return () => {
-      requestRef.current += 1;
-    };
-    // 切换服务器时从该用户的远程主目录重新加载。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [server?.id]);
+    if (connectionId && activeSessionId && !initialized) void loadDirectory();
+  }, [activeSessionId, connectionId, initialized, loadDirectory]);
+
+  useEffect(() => {
+    if (!activeSessionId || !fileListRef.current) return;
+    const saved = useWorkspaceStore.getState().workspaces[activeSessionId];
+    fileListRef.current.scrollTop = saved?.fileScrollTop ?? 0;
+  }, [activeSessionId, files]);
 
   const handleUpload = async (file?: File) => {
-    if (!server || !file || !path) return;
-    setTransferring(true);
-    setError(null);
+    if (!server || !activeSessionId || !file || !path) return;
+    useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+      transferring: true,
+      error: null,
+    });
     try {
       await uploadFile(server.id, path, file);
       await loadDirectory(path);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+        error: reason instanceof Error ? reason.message : String(reason),
+      });
     } finally {
-      setTransferring(false);
+      useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+        transferring: false,
+      });
       if (inputRef.current) inputRef.current.value = "";
     }
   };
 
   const handleDownload = (file: RemoteFile) => {
-    if (!server) return;
-    setError(null);
+    if (!server || !activeSessionId) return;
+    useWorkspaceStore.getState().updateWorkspace(activeSessionId, { error: null });
     downloadFile(server.id, file);
   };
 
@@ -163,13 +205,22 @@ export function FilesView({ server }: Props) {
               placeholder="正在读取主目录..."
               value={pathInput}
               spellCheck={false}
-              onChange={(event) => setPathInput(event.target.value)}
+              onChange={(event) => {
+                if (!activeSessionId) return;
+                useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+                  pathInput: event.target.value,
+                });
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   const nextPath = pathInput.trim();
                   if (nextPath) void loadDirectory(nextPath);
                 } else if (event.key === "Escape") {
-                  setPathInput(path);
+                  if (activeSessionId) {
+                    useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+                      pathInput: path,
+                    });
+                  }
                   event.currentTarget.blur();
                 }
               }}
@@ -189,7 +240,17 @@ export function FilesView({ server }: Props) {
               <div className="empty-title">目录为空</div>
             </div>
           ) : (
-            <div className="file-list" aria-busy={loading || transferring}>
+            <div
+              ref={fileListRef}
+              className="file-list"
+              aria-busy={loading || transferring}
+              onScroll={(event) => {
+                if (!activeSessionId) return;
+                useWorkspaceStore
+                  .getState()
+                  .setFileScrollTop(activeSessionId, event.currentTarget.scrollTop);
+              }}
+            >
               {files.map((file) => (
                 <div
                   key={file.path}
