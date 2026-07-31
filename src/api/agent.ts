@@ -1,4 +1,5 @@
 import { get, post, postStream } from "./request";
+import type { RuntimeModelConfig } from "../types/aiConfig";
 
 export interface AiAgentConfigDTO {
   agentId: string;
@@ -16,6 +17,7 @@ export interface ChatStreamPayload {
   sessionId: string;
   message: string;
   terminalSessionId?: string;
+  runtimeModel: RuntimeModelConfig;
 }
 
 export type ChatStreamEvent =

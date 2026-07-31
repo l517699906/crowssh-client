@@ -12,11 +12,13 @@ import {
 } from "lucide-react";
 import type { ServerConfig } from "../../types";
 import {
-  downloadFile,
   listFiles,
-  uploadFile,
   type RemoteFile,
 } from "../../api/sftp";
+import {
+  enqueueDownloads,
+  enqueueUploads,
+} from "../../services/transferManager";
 import {
   EMPTY_WORKSPACE,
   useWorkspaceStore,
@@ -59,14 +61,12 @@ export function FilesView({ server, activeSessionId }: Props) {
         pathInput: value.pathInput,
         files: value.files,
         loading: value.loading,
-        transferring: value.transferring,
         initialized: value.initialized,
         error: value.error,
       };
     }),
   );
-  const { path, pathInput, files, loading, transferring, initialized, error } =
-    workspace;
+  const { path, pathInput, files, loading, initialized, error } = workspace;
 
   const loadDirectory = useCallback(
     async (nextPath?: string) => {
@@ -115,31 +115,40 @@ export function FilesView({ server, activeSessionId }: Props) {
     fileListRef.current.scrollTop = saved?.fileScrollTop ?? 0;
   }, [activeSessionId, files]);
 
-  const handleUpload = async (file?: File) => {
-    if (!server || !activeSessionId || !file || !path) return;
+  const handleUpload = (fileList?: FileList | null) => {
+    if (!server || !activeSessionId || !fileList?.length || !path) return;
     useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
-      transferring: true,
       error: null,
     });
-    try {
-      await uploadFile(server.id, path, file);
-      await loadDirectory(path);
-    } catch (reason) {
-      useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
-        error: reason instanceof Error ? reason.message : String(reason),
-      });
-    } finally {
-      useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
-        transferring: false,
-      });
-      if (inputRef.current) inputRef.current.value = "";
-    }
+    enqueueUploads(
+      {
+        sessionId: activeSessionId,
+        connectionId: server.id,
+        serverName: server.name || `${server.username}@${server.host}`,
+      },
+      path,
+      Array.from(fileList),
+      () => {
+        const currentWorkspace =
+          useWorkspaceStore.getState().workspaces[activeSessionId];
+        if (!currentWorkspace || currentWorkspace.path !== path) return;
+        void loadDirectory(path);
+      },
+    );
+    if (inputRef.current) inputRef.current.value = "";
   };
 
   const handleDownload = (file: RemoteFile) => {
     if (!server || !activeSessionId) return;
     useWorkspaceStore.getState().updateWorkspace(activeSessionId, { error: null });
-    downloadFile(server.id, file);
+    enqueueDownloads(
+      {
+        sessionId: activeSessionId,
+        connectionId: server.id,
+        serverName: server.name || `${server.username}@${server.host}`,
+      },
+      [file],
+    );
   };
 
   return (
@@ -153,13 +162,14 @@ export function FilesView({ server, activeSessionId }: Props) {
             ref={inputRef}
             className="file-upload-input"
             type="file"
-            onChange={(event) => void handleUpload(event.target.files?.[0])}
+            multiple
+            onChange={(event) => handleUpload(event.target.files)}
           />
           <button
             className="icon-btn"
             type="button"
             title="上传文件"
-            disabled={!server || !path || transferring}
+            disabled={!server || !path || loading}
             onClick={() => inputRef.current?.click()}
           >
             <Upload size={15} />
@@ -168,7 +178,7 @@ export function FilesView({ server, activeSessionId }: Props) {
             className="icon-btn"
             type="button"
             title="刷新目录"
-            disabled={!server || loading || transferring}
+            disabled={!server || loading}
             onClick={() => void loadDirectory(path)}
           >
             <RefreshCw size={15} className={loading ? "spin" : undefined} />
@@ -243,7 +253,7 @@ export function FilesView({ server, activeSessionId }: Props) {
             <div
               ref={fileListRef}
               className="file-list"
-              aria-busy={loading || transferring}
+              aria-busy={loading}
               onScroll={(event) => {
                 if (!activeSessionId) return;
                 useWorkspaceStore
@@ -281,7 +291,6 @@ export function FilesView({ server, activeSessionId }: Props) {
                       className="file-row-action"
                       type="button"
                       title={`下载 ${file.name}`}
-                      disabled={transferring}
                       onClick={() => handleDownload(file)}
                     >
                       <Download size={14} />
@@ -289,11 +298,6 @@ export function FilesView({ server, activeSessionId }: Props) {
                   )}
                 </div>
               ))}
-            </div>
-          )}
-          {transferring && (
-            <div className="file-transfer-status">
-              <LoaderCircle size={13} className="spin" /> 正在传输文件
             </div>
           )}
         </>

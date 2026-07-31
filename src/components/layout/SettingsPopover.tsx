@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
-import { LoaderCircle, RotateCcw, Server } from "lucide-react";
+import { KeyRound, LoaderCircle, RotateCcw, Server } from "lucide-react";
 import { checkServerHealth } from "../../api/health";
 import { useSettingsStore } from "../../store/settingsStore";
 import { useLayoutStore } from "../../store/layoutStore";
@@ -15,10 +15,11 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; color: string }[] = [
 
 interface Props {
   onClose: () => void;
+  onOpenAiSettings: () => void;
   anchorRef: RefObject<HTMLElement | null>;
 }
 
-export function SettingsPopover({ onClose, anchorRef }: Props) {
+export function SettingsPopover({ onClose, onOpenAiSettings, anchorRef }: Props) {
   const mode = useThemeStore((s) => s.mode);
   const setMode = useThemeStore((s) => s.setMode);
   const serverUrl = useSettingsStore((s) => s.serverUrl);
@@ -101,6 +102,13 @@ export function SettingsPopover({ onClose, anchorRef }: Props) {
             检测
           </button>
         </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-title">AI</div>
+        <button className="btn settings-wide-action" type="button" onClick={onOpenAiSettings}>
+          <KeyRound size={14} /> 管理密钥与模型
+        </button>
       </div>
 
       <div className="settings-section settings-bottom-action">

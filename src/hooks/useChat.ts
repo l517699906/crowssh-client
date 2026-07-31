@@ -3,6 +3,8 @@ import type { Agent, ChatMessage, Conversation } from "../types";
 import * as agentApi from "../api/agent";
 import { uid } from "../lib/storage";
 import { useSettingsStore } from "../store/settingsStore";
+import { useAiConfigStore } from "../store/aiConfigStore";
+import { readAiSecretForRequest } from "../api/aiSecrets";
 
 function createConversation(agentId: string): Conversation {
   return {
@@ -17,6 +19,9 @@ function createConversation(agentId: string): Conversation {
 export function useChat(terminalSessionId?: string) {
   const userId = useSettingsStore((state) => state.userId);
   const serverUrl = useSettingsStore((state) => state.serverUrl);
+  const activeProfile = useAiConfigStore((state) =>
+    state.profiles.find((profile) => profile.id === state.activeProfileId),
+  );
   const [agents, setAgents] = useState<Agent[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -149,6 +154,11 @@ export function useChat(terminalSessionId?: string) {
     setSending(true);
     setError(null);
     try {
+      if (!activeProfile) {
+        throw new Error("请先在设置中配置并启用 AI 模型");
+      }
+      const apiKey = await readAiSecretForRequest(activeProfile.credentialId);
+
       let sessionId = active.serverSessionId;
       if (!sessionId) {
         const sessionResponse = await agentApi.createSession(active.agentId, userId);
@@ -175,6 +185,14 @@ export function useChat(terminalSessionId?: string) {
           sessionId,
           message: content,
           terminalSessionId,
+          runtimeModel: {
+            provider: activeProfile.provider,
+            baseUrl: activeProfile.baseUrl,
+            apiKey,
+            model: activeProfile.model,
+            temperature: activeProfile.temperature,
+            maxTokens: activeProfile.maxTokens,
+          },
         },
         abortController.signal,
       )) {
@@ -209,7 +227,7 @@ export function useChat(terminalSessionId?: string) {
       streamAbortRef.current = null;
       setSending(false);
     }
-  }, [active, patchMessage, sending, terminalSessionId, userId]);
+  }, [active, activeProfile, patchMessage, sending, terminalSessionId, userId]);
 
   return {
     agents,
@@ -219,6 +237,7 @@ export function useChat(terminalSessionId?: string) {
     loadingAgents,
     sending,
     error,
+    activeProfile,
     setActiveConversation: setActiveId,
     newConversation,
     setAgent,

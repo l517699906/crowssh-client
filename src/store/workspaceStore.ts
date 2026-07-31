@@ -6,7 +6,6 @@ export interface WorkspaceState {
   pathInput: string;
   files: RemoteFile[];
   loading: boolean;
-  transferring: boolean;
   initialized: boolean;
   error: string | null;
   requestId: number;
@@ -19,7 +18,6 @@ const createWorkspace = (): WorkspaceState => ({
   pathInput: "",
   files: [],
   loading: false,
-  transferring: false,
   initialized: false,
   error: null,
   requestId: 0,

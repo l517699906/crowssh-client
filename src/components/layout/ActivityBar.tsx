@@ -1,7 +1,11 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { Folder, Server, Settings } from "lucide-react";
 import { useLayoutStore, type ActivityView } from "../../store/layoutStore";
 import { SettingsPopover } from "./SettingsPopover";
+
+const AiSettingsDialog = lazy(() =>
+  import("../settings/AiSettingsDialog").then((module) => ({ default: module.AiSettingsDialog })),
+);
 
 const ITEMS: { view: ActivityView; icon: typeof Server; label: string }[] = [
   { view: "servers", icon: Server, label: "服务器" },
@@ -13,6 +17,7 @@ export function ActivityBar() {
   const leftVisible = useLayoutStore((s) => s.leftVisible);
   const selectActivity = useLayoutStore((s) => s.selectActivity);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -44,9 +49,18 @@ export function ActivityBar() {
           <SettingsPopover
             anchorRef={settingsRef}
             onClose={() => setSettingsOpen(false)}
+            onOpenAiSettings={() => {
+              setSettingsOpen(false);
+              setAiSettingsOpen(true);
+            }}
           />
         )}
       </div>
+      {aiSettingsOpen ? (
+        <Suspense fallback={null}>
+          <AiSettingsDialog onClose={() => setAiSettingsOpen(false)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

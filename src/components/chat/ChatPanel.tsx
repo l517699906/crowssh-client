@@ -7,7 +7,7 @@ import type { TerminalSession } from "../../types";
 import "./chat.css";
 
 export function ChatPanel({ terminal }: { terminal?: TerminalSession }) {
-  const { active, agents, error, loadingAgents, newConversation, setAgent, sendMessage, sending } = useChat(
+  const { active, activeProfile, agents, error, loadingAgents, newConversation, setAgent, sendMessage, sending } = useChat(
     terminal?.backendSessionId,
   );
   const [text, setText] = useState("");
@@ -31,10 +31,11 @@ export function ChatPanel({ terminal }: { terminal?: TerminalSession }) {
         agentId={active?.agentId ?? ""}
         onAgentChange={setAgent}
         onSend={sendMessage}
-        disabled={loadingAgents || !agents.length || sending}
+        disabled={loadingAgents || !agents.length || !activeProfile || sending}
         text={text}
         setText={setText}
         terminalLabel={terminal?.backendSessionId ? terminal.title : undefined}
+        modelLabel={activeProfile?.model}
       />
     </>
   );

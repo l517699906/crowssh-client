@@ -1,6 +1,7 @@
 import { PanelLeft, Plus, Sparkles, TerminalSquare } from "lucide-react";
 import { useLayoutStore } from "../../store/layoutStore";
 import type { useTerminals } from "../../hooks/useTerminals";
+import { TransferCenter } from "../transfers/TransferCenter";
 
 interface Props {
   terminals: ReturnType<typeof useTerminals>;
@@ -41,6 +42,7 @@ export function Header({ terminals, onAddServer }: Props) {
       <div className="header-title">CrowSSH</div>
 
       <div className="header-right">
+        <TransferCenter />
         <button
           className={`icon-btn${terminalVisible ? " active" : ""}`}
           title="终端面板"

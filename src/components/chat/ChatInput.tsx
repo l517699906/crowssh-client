@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Send, Terminal } from "lucide-react";
+import { BrainCircuit, Send, Terminal } from "lucide-react";
 import { AgentSelect } from "./AgentSelect";
 import type { Agent } from "../../types";
 
@@ -12,6 +12,7 @@ interface Props {
   text: string;
   setText: (text: string) => void;
   terminalLabel?: string;
+  modelLabel?: string;
 }
 
 export function ChatInput({
@@ -23,6 +24,7 @@ export function ChatInput({
   text,
   setText,
   terminalLabel,
+  modelLabel,
 }: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -47,7 +49,13 @@ export function ChatInput({
           ref={taRef}
           className="chat-textarea"
           value={text}
-          placeholder={disabled ? "正在连接智能体" : "输入消息，Enter 发送 / Shift+Enter 换行"}
+          placeholder={
+            !modelLabel
+              ? "先在设置中配置 AI 模型"
+              : disabled
+                ? "正在连接智能体"
+                : "输入消息，Enter 发送 / Shift+Enter 换行"
+          }
           disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -55,6 +63,10 @@ export function ChatInput({
         <div className="chat-composer-footer">
           <div className="chat-context-controls">
             <AgentSelect value={agentId} agents={agents} onChange={onAgentChange} disabled={disabled} />
+            <span className="chat-model-binding" title={modelLabel ? `当前模型：${modelLabel}` : "未配置 AI 模型"}>
+              <BrainCircuit size={13} />
+              <span>{modelLabel ?? "未配置模型"}</span>
+            </span>
             <span
               className={`chat-terminal-binding${terminalLabel ? " connected" : ""}`}
               title={terminalLabel ? `已绑定终端：${terminalLabel}` : "未绑定 SSH 终端"}

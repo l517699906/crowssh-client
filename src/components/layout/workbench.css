@@ -191,6 +191,10 @@
   margin-top: 16px;
 }
 
+.settings-wide-action {
+  width: 100%;
+}
+
 .settings-field {
   display: flex;
   flex-direction: column;

@@ -211,6 +211,24 @@
   font-size: 11px;
 }
 
+.chat-model-binding {
+  min-width: 0;
+  max-width: 128px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  color: var(--accent-hover);
+  font-size: 11px;
+}
+
+.chat-model-binding span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-terminal-binding.connected {
   color: var(--success);
 }
