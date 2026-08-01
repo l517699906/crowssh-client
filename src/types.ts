@@ -53,15 +53,57 @@ export interface TerminalSession {
 }
 
 // ============ AI 对话 ============
-export type ChatRole = "user" | "assistant";
+export type ChatTurnStatus = "running" | "completed" | "error";
+export type TranscriptExecutionStatus = "running" | "success" | "error";
 
-export interface ChatMessage {
+interface TranscriptItemBase {
   id: string;
-  role: ChatRole;
-  content: string;
   createdAt: number;
-  pending?: boolean; // AI 回复生成中
-  error?: boolean;
+}
+
+export interface AssistantTextItem extends TranscriptItemBase {
+  type: "assistant_text";
+  content: string;
+}
+
+export interface ToolTranscriptItem extends TranscriptItemBase {
+  type: "tool";
+  toolCallId: string;
+  toolName: string;
+  command: string;
+  status: TranscriptExecutionStatus;
+  startedAt: number;
+  completedAt?: number;
+  durationMs?: number;
+  outputLength?: number;
+  errorMessage?: string;
+}
+
+export interface StatusTranscriptItem extends TranscriptItemBase {
+  type: "status";
+  status: TranscriptExecutionStatus;
+  content: string;
+}
+
+export interface ErrorTranscriptItem extends TranscriptItemBase {
+  type: "error";
+  content: string;
+}
+
+export type TranscriptItem =
+  | AssistantTextItem
+  | ToolTranscriptItem
+  | StatusTranscriptItem
+  | ErrorTranscriptItem;
+
+export interface ChatTurn {
+  id: string;
+  prompt: string;
+  status: ChatTurnStatus;
+  statusText: string;
+  items: TranscriptItem[];
+  createdAt: number;
+  completedAt?: number;
 }
 
 export interface Conversation {
@@ -69,7 +111,7 @@ export interface Conversation {
   title: string;
   agentId: string;
   serverSessionId?: string;
-  messages: ChatMessage[];
+  turns: ChatTurn[];
   createdAt: number;
 }
 

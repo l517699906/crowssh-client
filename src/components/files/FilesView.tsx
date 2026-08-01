@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Download,
   File,
+  FileCode2,
   Folder,
   FolderOpen,
   LoaderCircle,
@@ -19,6 +20,15 @@ import {
   enqueueDownloads,
   enqueueUploads,
 } from "../../services/transferManager";
+import {
+  REMOTE_TEXT_SAVED_EVENT,
+  openRemoteTextEditor,
+  type RemoteTextSavedEvent,
+} from "../../services/editorWindowService";
+import {
+  isRemoteTextFile,
+  remoteTextOpenError,
+} from "../../config/editorFormats";
 import {
   EMPTY_WORKSPACE,
   useWorkspaceStore,
@@ -115,6 +125,31 @@ export function FilesView({ server, activeSessionId }: Props) {
     fileListRef.current.scrollTop = saved?.fileScrollTop ?? 0;
   }, [activeSessionId, files]);
 
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) => listen<RemoteTextSavedEvent>(
+        REMOTE_TEXT_SAVED_EVENT,
+        ({ payload }) => {
+          if (payload.connectionId !== connectionId) return;
+          if (parentPath(payload.path) !== path) return;
+          void loadDirectory(path);
+        },
+      ))
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch(() => {
+        // 浏览器预览环境没有 Tauri 事件通道，不影响编辑器窗口使用。
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [connectionId, loadDirectory, path]);
+
   const handleUpload = (fileList?: FileList | null) => {
     if (!server || !activeSessionId || !fileList?.length || !path) return;
     useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
@@ -149,6 +184,31 @@ export function FilesView({ server, activeSessionId }: Props) {
       },
       [file],
     );
+  };
+
+  const handleOpenTextFile = async (file: RemoteFile) => {
+    if (!server || !activeSessionId) return;
+    const reason = remoteTextOpenError(file);
+    if (reason) {
+      useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+        error: reason,
+      });
+      return;
+    }
+
+    useWorkspaceStore.getState().updateWorkspace(activeSessionId, { error: null });
+    try {
+      await openRemoteTextEditor({
+        connectionId: server.id,
+        path: file.path,
+        fileName: file.name,
+        serverName: server.name || `${server.username}@${server.host}`,
+      });
+    } catch (reason) {
+      useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
+        error: reason instanceof Error ? reason.message : String(reason),
+      });
+    }
   };
 
   return (
@@ -264,13 +324,20 @@ export function FilesView({ server, activeSessionId }: Props) {
               {files.map((file) => (
                 <div
                   key={file.path}
-                  className={`file-item${file.directory ? " directory" : ""}`}
-                  title={file.path}
+                  className={`file-item${file.directory ? " directory" : ""}${isRemoteTextFile(file) ? " editable" : ""}`}
+                  title={isRemoteTextFile(file) ? `${file.path}\n双击在新窗口编辑` : file.path}
                   onDoubleClick={() => {
                     if (file.directory) void loadDirectory(file.path);
+                    else void handleOpenTextFile(file);
                   }}
                 >
-                  {file.directory ? <Folder size={16} /> : <File size={16} />}
+                  {file.directory ? (
+                    <Folder size={16} />
+                  ) : isRemoteTextFile(file) ? (
+                    <FileCode2 size={16} />
+                  ) : (
+                    <File size={16} />
+                  )}
                   <div className="file-info">
                     <div className="file-name">{file.name}</div>
                     {!file.directory && (

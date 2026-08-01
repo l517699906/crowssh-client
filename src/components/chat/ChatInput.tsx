@@ -8,7 +8,8 @@ interface Props {
   agentId: string;
   onAgentChange: (id: string) => void;
   onSend: (text: string) => void | Promise<void>;
-  disabled: boolean;
+  agentSelectDisabled: boolean;
+  sendDisabled: boolean;
   text: string;
   setText: (text: string) => void;
   terminalLabel?: string;
@@ -20,7 +21,8 @@ export function ChatInput({
   agentId,
   onAgentChange,
   onSend,
-  disabled,
+  agentSelectDisabled,
+  sendDisabled,
   text,
   setText,
   terminalLabel,
@@ -29,7 +31,7 @@ export function ChatInput({
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const send = () => {
-    if (!text.trim()) return;
+    if (sendDisabled || !text.trim()) return;
     void onSend(text);
     setText("");
     taRef.current?.focus();
@@ -49,20 +51,18 @@ export function ChatInput({
           ref={taRef}
           className="chat-textarea"
           value={text}
-          placeholder={
-            !modelLabel
-              ? "先在设置中配置 AI 模型"
-              : disabled
-                ? "正在连接智能体"
-                : "输入消息，Enter 发送 / Shift+Enter 换行"
-          }
-          disabled={disabled}
+          placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
         />
         <div className="chat-composer-footer">
           <div className="chat-context-controls">
-            <AgentSelect value={agentId} agents={agents} onChange={onAgentChange} disabled={disabled} />
+            <AgentSelect
+              value={agentId}
+              agents={agents}
+              onChange={onAgentChange}
+              disabled={agentSelectDisabled}
+            />
             <span className="chat-model-binding" title={modelLabel ? `当前模型：${modelLabel}` : "未配置 AI 模型"}>
               <BrainCircuit size={13} />
               <span>{modelLabel ?? "未配置模型"}</span>
@@ -78,7 +78,7 @@ export function ChatInput({
           <button
             className="chat-send-btn"
             onClick={send}
-            disabled={disabled || !text.trim()}
+            disabled={sendDisabled || !text.trim()}
             title="发送 (Enter)"
           >
             <Send size={17} />

@@ -18,12 +18,12 @@ export function ChatPanel({ terminal }: { terminal?: TerminalSession }) {
         <span className="panel-title">
           <Sparkles size={14} /> AI 助手
         </span>
-        <button className="icon-btn" title="新建对话" onClick={newConversation} disabled={!agents.length}>
+        <button className="icon-btn" title="新建对话" onClick={newConversation} disabled={!agents.length || sending}>
           <SquarePen size={16} />
         </button>
       </div>
 
-      <MessageList messages={active?.messages ?? []} onPromptSelect={setText} />
+      <MessageList turns={active?.turns ?? []} />
       {error && <div className="chat-status" role="alert">{error}</div>}
 
       <ChatInput
@@ -31,7 +31,8 @@ export function ChatPanel({ terminal }: { terminal?: TerminalSession }) {
         agentId={active?.agentId ?? ""}
         onAgentChange={setAgent}
         onSend={sendMessage}
-        disabled={loadingAgents || !agents.length || !activeProfile || sending}
+        agentSelectDisabled={loadingAgents || !agents.length || sending}
+        sendDisabled={loadingAgents || !active || !agents.length || !activeProfile || sending}
         text={text}
         setText={setText}
         terminalLabel={terminal?.backendSessionId ? terminal.title : undefined}

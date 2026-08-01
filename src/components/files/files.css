@@ -105,6 +105,14 @@
   cursor: pointer;
 }
 
+.file-item.editable {
+  cursor: default;
+}
+
+.file-item.editable > svg {
+  color: var(--success);
+}
+
 .file-info {
   flex: 1;
   min-width: 0;
