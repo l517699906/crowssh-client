@@ -106,13 +106,22 @@ export interface ChatTurn {
   completedAt?: number;
 }
 
+export interface ChatModelSelection {
+  profileId: string;
+  model: string;
+}
+
 export interface Conversation {
   id: string;
   title: string;
   agentId: string;
+  serverId: string;
+  serverLabel: string;
   serverSessionId?: string;
+  modelSelection?: ChatModelSelection;
   turns: ChatTurn[];
   createdAt: number;
+  updatedAt: number;
 }
 
 export interface Agent {

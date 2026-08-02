@@ -10,6 +10,8 @@ export interface AiProfile {
   temperature: number;
   maxTokens?: number;
   keyLastFour?: string;
+  availableModels?: string[];
+  modelsFetchedAt?: number;
 }
 
 export interface RuntimeModelConfig {
@@ -19,6 +21,26 @@ export interface RuntimeModelConfig {
   model: string;
   temperature: number;
   maxTokens?: number;
+}
+
+export type RuntimeModelListConfig = Pick<
+  RuntimeModelConfig,
+  "provider" | "baseUrl" | "apiKey"
+>;
+
+const MAX_MODEL_COUNT = 500;
+const MAX_MODEL_ID_LENGTH = 200;
+
+export function normalizeModelIds(models: readonly unknown[]): string[] {
+  const unique = new Set<string>();
+  for (const model of models) {
+    if (typeof model !== "string") continue;
+    const id = model.trim();
+    if (!id || id.length > MAX_MODEL_ID_LENGTH) continue;
+    unique.add(id);
+    if (unique.size >= MAX_MODEL_COUNT) break;
+  }
+  return [...unique].sort((left, right) => left.localeCompare(right));
 }
 
 export const PROVIDER_OPTIONS: Array<{

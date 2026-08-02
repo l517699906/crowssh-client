@@ -43,7 +43,7 @@ export function MessageList({ turns }: Props) {
         <div className="empty-state">
           <MessagesSquare size={28} strokeWidth={1.5} />
           <div className="empty-title">开始新的对话</div>
-          <div className="empty-hint">选择智能体，在下方输入你的问题</div>
+          <div className="empty-hint">在下方输入你的问题</div>
         </div>
       </div>
     );

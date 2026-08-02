@@ -16,6 +16,7 @@ export interface ChatStreamPayload {
   userId: string;
   sessionId: string;
   message: string;
+  connectionId: string;
   terminalSessionId?: string;
   runtimeModel: RuntimeModelConfig;
 }
@@ -60,8 +61,18 @@ export function getAgentConfigs() {
   return get<AiAgentConfigDTO[]>("/api/v1/query_ai_agent_config_list");
 }
 
-export function createSession(agentId: string, userId: string) {
-  return post<CreateSessionDTO>("/api/v1/create_session", { agentId, userId });
+export function createSession(
+  agentId: string,
+  userId: string,
+  connectionId: string,
+  terminalSessionId: string,
+) {
+  return post<CreateSessionDTO>("/api/v1/create_session", {
+    agentId,
+    userId,
+    connectionId,
+    terminalSessionId,
+  });
 }
 
 function parseStreamLine(line: string): ChatStreamEvent | null {

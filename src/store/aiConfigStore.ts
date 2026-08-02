@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { load, save, uid } from "../lib/storage";
-import type { AiProfile, AiProvider } from "../types/aiConfig";
+import {
+  normalizeModelIds,
+  type AiProfile,
+  type AiProvider,
+} from "../types/aiConfig";
 
 const STORAGE_KEY = "settings.ai-profiles.v1";
 
@@ -42,6 +46,14 @@ function readConfig(): PersistedAiConfig {
       && storedMaxTokens > 0
       ? Math.min(131072, storedMaxTokens)
       : undefined;
+    const availableModels = normalizeModelIds(
+      Array.isArray(profile.availableModels) ? profile.availableModels : [],
+    );
+    const modelsFetchedAt = typeof profile.modelsFetchedAt === "number"
+      && Number.isFinite(profile.modelsFetchedAt)
+      && profile.modelsFetchedAt > 0
+      ? profile.modelsFetchedAt
+      : undefined;
     return [{
       id: profile.id,
       credentialId: profile.credentialId,
@@ -52,6 +64,8 @@ function readConfig(): PersistedAiConfig {
       temperature,
       maxTokens,
       keyLastFour: typeof profile.keyLastFour === "string" ? profile.keyLastFour.slice(-4) : undefined,
+      availableModels: availableModels.length ? availableModels : undefined,
+      modelsFetchedAt,
     }];
   });
   const activeProfileId = profiles.some((profile) => profile.id === stored.activeProfileId)

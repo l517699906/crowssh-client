@@ -40,7 +40,7 @@ const stored = load<Partial<Persisted> & { activeView?: string }>(KEY, {});
 const init: Persisted = {
   ...DEFAULTS,
   ...stored,
-  activeView: stored.activeView === "files" ? "files" : "servers",
+  activeView: DEFAULTS.activeView,
 };
 
 function persist(s: LayoutState) {

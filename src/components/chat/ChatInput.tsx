@@ -1,32 +1,32 @@
 import { useRef } from "react";
-import { BrainCircuit, Send, Terminal } from "lucide-react";
-import { AgentSelect } from "./AgentSelect";
-import type { Agent } from "../../types";
+import { BrainCircuit, Send, Square, Terminal } from "lucide-react";
 
 interface Props {
-  agents: Agent[];
-  agentId: string;
-  onAgentChange: (id: string) => void;
+  models: string[];
+  model: string;
+  onModelChange: (model: string) => void;
   onSend: (text: string) => void | Promise<void>;
-  agentSelectDisabled: boolean;
+  modelSelectDisabled: boolean;
   sendDisabled: boolean;
   text: string;
   setText: (text: string) => void;
   terminalLabel?: string;
-  modelLabel?: string;
+  sending: boolean;
+  onStop: () => void;
 }
 
 export function ChatInput({
-  agents,
-  agentId,
-  onAgentChange,
+  models,
+  model,
+  onModelChange,
   onSend,
-  agentSelectDisabled,
+  modelSelectDisabled,
   sendDisabled,
   text,
   setText,
   terminalLabel,
-  modelLabel,
+  sending,
+  onStop,
 }: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -57,15 +57,22 @@ export function ChatInput({
         />
         <div className="chat-composer-footer">
           <div className="chat-context-controls">
-            <AgentSelect
-              value={agentId}
-              agents={agents}
-              onChange={onAgentChange}
-              disabled={agentSelectDisabled}
-            />
-            <span className="chat-model-binding" title={modelLabel ? `当前模型：${modelLabel}` : "未配置 AI 模型"}>
+            <span
+              className={`chat-model-select${modelSelectDisabled ? " disabled" : ""}`}
+              title={model ? `当前对话模型：${model}` : "未配置 AI 模型"}
+            >
               <BrainCircuit size={13} />
-              <span>{modelLabel ?? "未配置模型"}</span>
+              <select
+                value={model}
+                aria-label="选择当前对话模型"
+                disabled={modelSelectDisabled}
+                onChange={(event) => onModelChange(event.target.value)}
+              >
+                {!models.length ? <option value="">未配置模型</option> : null}
+                {models.map((modelId) => (
+                  <option key={modelId} value={modelId}>{modelId}</option>
+                ))}
+              </select>
             </span>
             <span
               className={`chat-terminal-binding${terminalLabel ? " connected" : ""}`}
@@ -76,12 +83,13 @@ export function ChatInput({
             </span>
           </div>
           <button
+            type="button"
             className="chat-send-btn"
-            onClick={send}
-            disabled={sendDisabled || !text.trim()}
-            title="发送 (Enter)"
+            onClick={sending ? onStop : send}
+            disabled={!sending && (sendDisabled || !text.trim())}
+            title={sending ? "停止" : "发送 (Enter)"}
           >
-            <Send size={17} />
+            {sending ? <Square size={15} fill="currentColor" /> : <Send size={17} />}
           </button>
         </div>
       </div>

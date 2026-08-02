@@ -147,6 +147,30 @@
   min-width: 0;
 }
 
+.ai-model-field {
+  min-width: 0;
+}
+
+.ai-model-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.ai-model-query-btn {
+  min-width: 68px;
+  justify-content: center;
+}
+
+.ai-model-meta {
+  overflow: hidden;
+  color: var(--fg-disabled);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ai-secret-label,
 .ai-range-label {
   display: flex;
@@ -216,6 +240,10 @@
 
   .ai-profile-editor .form-row {
     display: block;
+  }
+
+  .ai-model-row {
+    grid-template-columns: minmax(0, 1fr) 68px;
   }
 
   .ai-editor-footer,

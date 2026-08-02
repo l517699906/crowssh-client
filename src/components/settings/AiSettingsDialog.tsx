@@ -6,12 +6,13 @@ import {
   KeyRound,
   LoaderCircle,
   Plus,
+  RefreshCw,
   ShieldCheck,
   Trash2,
   X,
   Zap,
 } from "lucide-react";
-import { testRuntimeModel } from "../../api/aiConfig";
+import { listRuntimeModels, testRuntimeModel } from "../../api/aiConfig";
 import {
   deleteAiSecret,
   getAiSecretStatus,
@@ -20,7 +21,12 @@ import {
   type SecretStatus,
 } from "../../api/aiSecrets";
 import { useAiConfigStore } from "../../store/aiConfigStore";
-import { PROVIDER_OPTIONS, type AiProfile, type AiProvider } from "../../types/aiConfig";
+import {
+  normalizeModelIds,
+  PROVIDER_OPTIONS,
+  type AiProfile,
+  type AiProvider,
+} from "../../types/aiConfig";
 import "./ai-settings.css";
 
 interface Props {
@@ -29,10 +35,7 @@ interface Props {
 
 const EMPTY_SECRET_STATUS: SecretStatus = { configured: false };
 
-function validateProfile(profile: AiProfile) {
-  if (!profile.name.trim()) throw new Error("配置名称不能为空");
-  if (!profile.model.trim()) throw new Error("模型名称不能为空");
-
+function validateEndpoint(profile: AiProfile) {
   let url: URL;
   try {
     url = new URL(profile.baseUrl.trim());
@@ -40,6 +43,12 @@ function validateProfile(profile: AiProfile) {
     throw new Error("服务地址必须是完整的 HTTPS 地址");
   }
   if (url.protocol !== "https:") throw new Error("服务地址必须使用 HTTPS");
+}
+
+function validateProfile(profile: AiProfile) {
+  if (!profile.name.trim()) throw new Error("配置名称不能为空");
+  if (!profile.model.trim()) throw new Error("模型名称不能为空");
+  validateEndpoint(profile);
   if (profile.temperature < 0 || profile.temperature > 2) {
     throw new Error("Temperature 必须在 0 到 2 之间");
   }
@@ -62,7 +71,7 @@ export function AiSettingsDialog({ onClose }: Props) {
   const [secret, setSecret] = useState("");
   const [secretStatus, setSecretStatus] = useState<SecretStatus>(EMPTY_SECRET_STATUS);
   const [showSecret, setShowSecret] = useState(false);
-  const [busy, setBusy] = useState<"save" | "test" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"save" | "test" | "models" | "delete" | null>(null);
   const [status, setStatus] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -112,6 +121,8 @@ export function AiSettingsDialog({ onClose }: Props) {
       provider,
       baseUrl: preset.baseUrl,
       model: preset.model,
+      availableModels: undefined,
+      modelsFetchedAt: undefined,
     }));
   };
 
@@ -124,6 +135,10 @@ export function AiSettingsDialog({ onClose }: Props) {
       name: draft.name.trim(),
       baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
       model: draft.model.trim(),
+      availableModels: draft.availableModels?.length
+        ? normalizeModelIds(draft.availableModels)
+        : undefined,
+      modelsFetchedAt: draft.availableModels?.length ? draft.modelsFetchedAt : undefined,
     };
     if (secret.trim()) {
       const nextSecretStatus = await saveAiSecret(draft.credentialId, secret);
@@ -136,6 +151,37 @@ export function AiSettingsDialog({ onClose }: Props) {
     setDraft(nextProfile);
     setIsNew(false);
     return nextProfile;
+  };
+
+  const queryModels = async () => {
+    setBusy("models");
+    setStatus(null);
+    try {
+      validateEndpoint(draft);
+      const apiKey = secret.trim()
+        ? secret.trim()
+        : await readAiSecretForRequest(draft.credentialId);
+      const response = await listRuntimeModels({
+        provider: draft.provider,
+        baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
+        apiKey,
+      });
+      if (response.code !== "0000") throw new Error(response.info || "模型列表查询失败");
+
+      const models = normalizeModelIds(response.data ?? []);
+      if (!models.length) throw new Error("服务商未返回可用模型");
+      setDraft((current) => ({
+        ...current,
+        model: current.model.trim() || models[0],
+        availableModels: models,
+        modelsFetchedAt: Date.now(),
+      }));
+      setStatus({ kind: "success", text: `已查询到 ${models.length} 个模型` });
+    } catch (error) {
+      setStatus({ kind: "error", text: error instanceof Error ? error.message : "模型列表查询失败" });
+    } finally {
+      setBusy(null);
+    }
   };
 
   const saveProfile = async () => {
@@ -233,7 +279,13 @@ export function AiSettingsDialog({ onClose }: Props) {
           <aside className="ai-profile-sidebar">
             <div className="ai-profile-sidebar-header">
               <span>配置</span>
-              <button className="icon-btn" type="button" title="新建 AI 配置" onClick={startNewProfile}>
+              <button
+                className="icon-btn"
+                type="button"
+                title="新建 AI 配置"
+                disabled={busy !== null}
+                onClick={startNewProfile}
+              >
                 <Plus size={16} />
               </button>
             </div>
@@ -243,6 +295,7 @@ export function AiSettingsDialog({ onClose }: Props) {
                   key={profile.id}
                   className={`ai-profile-item${!isNew && draft.id === profile.id ? " selected" : ""}`}
                   type="button"
+                  disabled={busy !== null}
                   onClick={() => selectProfile(profile)}
                 >
                   <span className="ai-profile-name">{profile.name}</span>
@@ -272,6 +325,7 @@ export function AiSettingsDialog({ onClose }: Props) {
                   <select
                     className="select"
                     value={draft.provider}
+                    disabled={busy !== null}
                     onChange={(event) => changeProvider(event.target.value as AiProvider)}
                   >
                     {PROVIDER_OPTIONS.map((provider) => (
@@ -279,15 +333,59 @@ export function AiSettingsDialog({ onClose }: Props) {
                     ))}
                   </select>
                 </label>
-                <label className="field">
+                <div className="field ai-model-field">
                   <span className="field-label">模型</span>
-                  <input
-                    className="input"
-                    value={draft.model}
-                    placeholder="deepseek-chat"
-                    onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
-                  />
-                </label>
+                  <div className="ai-model-row">
+                    {draft.availableModels?.length ? (
+                      <select
+                        className="select"
+                        value={draft.availableModels.includes(draft.model) ? draft.model : ""}
+                        disabled={busy !== null}
+                        onChange={(event) => setDraft((current) => ({
+                          ...current,
+                          model: event.target.value,
+                        }))}
+                      >
+                        <option value="">手动输入</option>
+                        {draft.availableModels.map((model) => (
+                          <option key={model} value={model}>{model}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="input"
+                        value={draft.model}
+                        disabled={busy !== null}
+                        placeholder="deepseek-chat"
+                        onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
+                      />
+                    )}
+                    <button
+                      className="btn ai-model-query-btn"
+                      type="button"
+                      disabled={busy !== null}
+                      title="查询当前密钥可用的模型"
+                      onClick={() => void queryModels()}
+                    >
+                      <RefreshCw size={14} className={busy === "models" ? "spin" : undefined} />
+                      查询
+                    </button>
+                  </div>
+                  {draft.availableModels?.length && !draft.availableModels.includes(draft.model) ? (
+                    <input
+                      className="input"
+                      value={draft.model}
+                      disabled={busy !== null}
+                      placeholder="输入自定义模型名称"
+                      onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
+                    />
+                  ) : null}
+                  {draft.modelsFetchedAt ? (
+                    <span className="ai-model-meta">
+                      最近查询：{new Date(draft.modelsFetchedAt).toLocaleString()}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <label className="field">
@@ -296,7 +394,13 @@ export function AiSettingsDialog({ onClose }: Props) {
                   className="input"
                   inputMode="url"
                   value={draft.baseUrl}
-                  onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))}
+                  disabled={busy !== null}
+                  onChange={(event) => setDraft((current) => ({
+                    ...current,
+                    baseUrl: event.target.value,
+                    availableModels: undefined,
+                    modelsFetchedAt: undefined,
+                  }))}
                 />
               </label>
 
@@ -315,9 +419,17 @@ export function AiSettingsDialog({ onClose }: Props) {
                     className="input"
                     type={showSecret ? "text" : "password"}
                     value={secret}
+                    disabled={busy !== null}
                     autoComplete="off"
                     placeholder={secretStatus.configured ? "留空则保持现有密钥" : "输入 API Key"}
-                    onChange={(event) => setSecret(event.target.value)}
+                    onChange={(event) => {
+                      setSecret(event.target.value);
+                      setDraft((current) => ({
+                        ...current,
+                        availableModels: undefined,
+                        modelsFetchedAt: undefined,
+                      }));
+                    }}
                   />
                   <button
                     className="icon-btn password-visibility"

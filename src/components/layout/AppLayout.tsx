@@ -24,7 +24,7 @@ export function AppLayout({ servers, terminals }: Props) {
   const layout = useLayoutStore();
   const [dialog, setDialog] = useState<Dialog>(null);
   const activeTerminal = terminals.sessions.find(
-    (session) => session.id === terminals.activeId && session.status === "connected",
+    (session) => session.id === terminals.activeId,
   );
   const activeServer = activeTerminal
     ? servers.servers.find((server) => server.id === activeTerminal.serverId)
@@ -87,7 +87,7 @@ export function AppLayout({ servers, terminals }: Props) {
             <div
               style={{ width: layout.rightWidth, flexShrink: 0, display: "flex" }}
             >
-              <RightSidebar terminal={activeTerminal} />
+              <RightSidebar terminal={activeTerminal} server={activeServer} />
             </div>
           </>
         )}

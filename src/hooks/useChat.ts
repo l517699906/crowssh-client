@@ -1,222 +1,26 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Agent,
   AssistantTextItem,
+  ChatModelSelection,
   ChatTurn,
-  Conversation,
-  ErrorTranscriptItem,
-  StatusTranscriptItem,
-  ToolTranscriptItem,
+  ServerConfig,
+  TerminalSession,
   TranscriptExecutionStatus,
 } from "../types";
 import * as agentApi from "../api/agent";
-import { uid } from "../lib/storage";
-import { useSettingsStore } from "../store/settingsStore";
-import { useAiConfigStore } from "../store/aiConfigStore";
 import { readAiSecretForRequest } from "../api/aiSecrets";
+import { initializeChatHistory } from "../lib/chatHistory";
+import { uid } from "../lib/storage";
+import { useAiConfigStore } from "../store/aiConfigStore";
+import { useChatStore } from "../store/chatStore";
+import { useSettingsStore } from "../store/settingsStore";
+import {
+  normalizeModelIds,
+  type AiProfile,
+} from "../types/aiConfig";
 
-type ConversationAction =
-  | {
-      type: "reconcile_agents";
-      availableAgentIds: string[];
-      fallbackAgentId: string;
-      initialConversation: Conversation;
-    }
-  | { type: "reset_sessions" }
-  | { type: "prepend_conversation"; conversation: Conversation }
-  | { type: "set_agent"; conversationId: string; agentId: string }
-  | { type: "set_session"; conversationId: string; sessionId: string }
-  | { type: "start_turn"; conversationId: string; turn: ChatTurn }
-  | {
-      type: "append_text";
-      conversationId: string;
-      turnId: string;
-      item: AssistantTextItem;
-    }
-  | {
-      type: "upsert_tool";
-      conversationId: string;
-      turnId: string;
-      item: ToolTranscriptItem;
-    }
-  | {
-      type: "set_status";
-      conversationId: string;
-      turnId: string;
-      item: StatusTranscriptItem;
-    }
-  | {
-      type: "complete_turn";
-      conversationId: string;
-      turnId: string;
-      statusItemId: string;
-      completedAt: number;
-    }
-  | {
-      type: "fail_turn";
-      conversationId: string;
-      turnId: string;
-      statusItemId: string;
-      completedAt: number;
-      item: ErrorTranscriptItem;
-    };
-
-function updateTurn(
-  conversations: Conversation[],
-  conversationId: string,
-  turnId: string,
-  update: (turn: ChatTurn) => ChatTurn,
-) {
-  return conversations.map((conversation) =>
-    conversation.id !== conversationId
-      ? conversation
-      : {
-          ...conversation,
-          turns: conversation.turns.map((turn) => (turn.id === turnId ? update(turn) : turn)),
-        },
-  );
-}
-
-function conversationReducer(
-  conversations: Conversation[],
-  action: ConversationAction,
-): Conversation[] {
-  switch (action.type) {
-    case "reconcile_agents": {
-      if (conversations.length === 0) return [action.initialConversation];
-      const availableIds = new Set(action.availableAgentIds);
-      return conversations.map((conversation) =>
-        availableIds.has(conversation.agentId)
-          ? conversation
-          : {
-              ...conversation,
-              agentId: action.fallbackAgentId,
-              serverSessionId: undefined,
-            },
-      );
-    }
-    case "reset_sessions":
-      return conversations.map((conversation) => ({
-        ...conversation,
-        serverSessionId: undefined,
-      }));
-    case "prepend_conversation":
-      return [action.conversation, ...conversations];
-    case "set_agent":
-      return conversations.map((conversation) =>
-        conversation.id === action.conversationId
-          ? {
-              ...conversation,
-              agentId: action.agentId,
-              serverSessionId: undefined,
-            }
-          : conversation,
-      );
-    case "set_session":
-      return conversations.map((conversation) =>
-        conversation.id === action.conversationId
-          ? { ...conversation, serverSessionId: action.sessionId }
-          : conversation,
-      );
-    case "start_turn":
-      return conversations.map((conversation) =>
-        conversation.id === action.conversationId
-          ? {
-              ...conversation,
-              title: conversation.turns.length === 0
-                ? action.turn.prompt.slice(0, 20)
-                : conversation.title,
-              turns: [...conversation.turns, action.turn],
-            }
-          : conversation,
-      );
-    case "append_text":
-      return updateTurn(conversations, action.conversationId, action.turnId, (turn) => {
-        const existingItem = turn.items.find((item) => item.id === action.item.id);
-        return {
-          ...turn,
-          items: existingItem
-            ? turn.items.map((item) =>
-                item.id === action.item.id && item.type === "assistant_text"
-                  ? { ...item, content: `${item.content}${action.item.content}` }
-                  : item,
-              )
-            : [...turn.items, action.item],
-        };
-      });
-    case "upsert_tool":
-      return updateTurn(conversations, action.conversationId, action.turnId, (turn) => {
-        const existingItem = turn.items.find(
-          (item) => item.type === "tool" && item.toolCallId === action.item.toolCallId,
-        );
-        return {
-          ...turn,
-          statusText: action.item.status === "running" ? "正在执行命令" : turn.statusText,
-          items: existingItem
-            ? turn.items.map((item) =>
-                item.type === "tool" && item.toolCallId === action.item.toolCallId
-                  ? {
-                      ...item,
-                      ...action.item,
-                      command: action.item.command || item.command,
-                      toolName: action.item.toolName || item.toolName,
-                      createdAt: item.createdAt,
-                      startedAt: item.startedAt,
-                    }
-                  : item,
-              )
-            : [...turn.items, action.item],
-        };
-      });
-    case "set_status":
-      return updateTurn(conversations, action.conversationId, action.turnId, (turn) => ({
-        ...turn,
-        statusText: action.item.content,
-        items: turn.items.some((item) => item.id === action.item.id)
-          ? turn.items.map((item) => (item.id === action.item.id ? action.item : item))
-          : [...turn.items, action.item],
-      }));
-    case "complete_turn":
-      return updateTurn(conversations, action.conversationId, action.turnId, (turn) => ({
-        ...turn,
-        status: "completed",
-        statusText: "处理完成",
-        completedAt: action.completedAt,
-        items: turn.items.map((item) =>
-          item.id === action.statusItemId && item.type === "status"
-            ? { ...item, status: "success", content: "处理完成" }
-            : item,
-        ),
-      }));
-    case "fail_turn":
-      return updateTurn(conversations, action.conversationId, action.turnId, (turn) => ({
-        ...turn,
-        status: "error",
-        statusText: "处理失败",
-        completedAt: action.completedAt,
-        items: [
-          ...turn.items.map((item) =>
-            item.id === action.statusItemId && item.type === "status"
-              ? { ...item, status: "error" as const, content: "处理失败" }
-              : item,
-          ),
-          action.item,
-        ],
-      }));
-    default:
-      return conversations;
-  }
-}
-
-function createConversation(agentId: string): Conversation {
-  return {
-    id: uid(),
-    title: "新对话",
-    agentId,
-    turns: [],
-    createdAt: Date.now(),
-  };
-}
+const streamControllers = new Map<string, AbortController>();
 
 function normalizeResultStatus(status: string): TranscriptExecutionStatus {
   const normalized = status.toLowerCase();
@@ -226,67 +30,86 @@ function normalizeResultStatus(status: string): TranscriptExecutionStatus {
   return normalized === "running" ? "running" : "error";
 }
 
-export function useChat(terminalSessionId?: string) {
+function displayServerName(server: ServerConfig | undefined, terminal: TerminalSession): string {
+  if (!server) return terminal.title;
+  return server.name || `${server.username}@${server.host}`;
+}
+
+function getAvailableModels(profile: AiProfile): string[] {
+  return normalizeModelIds([profile.model, ...(profile.availableModels ?? [])]);
+}
+
+function resolveConversationModel(
+  profile: AiProfile,
+  selection?: ChatModelSelection,
+): string {
+  const availableModels = getAvailableModels(profile);
+  return selection?.profileId === profile.id && availableModels.includes(selection.model)
+    ? selection.model
+    : profile.model;
+}
+
+export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
   const userId = useSettingsStore((state) => state.userId);
   const serverUrl = useSettingsStore((state) => state.serverUrl);
   const activeProfile = useAiConfigStore((state) =>
     state.profiles.find((profile) => profile.id === state.activeProfileId),
   );
+  const hydrated = useChatStore((state) => state.hydrated);
+  const conversations = useChatStore((state) => state.conversations);
+  const activeByTerminal = useChatStore((state) => state.activeByTerminal);
+  const runningByConversation = useChatStore((state) => state.runningByConversation);
+  const runningByTerminal = useChatStore((state) => state.runningByTerminal);
+  const errorsByConversation = useChatStore((state) => state.errorsByConversation);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [conversations, dispatch] = useReducer(conversationReducer, []);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const streamAbortRef = useRef<AbortController | null>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const identityRef = useRef(`${serverUrl}|${userId}`);
 
-  const active = conversations.find((item) => item.id === activeId)
-    ?? conversations[0]
-    ?? null;
+  const activeId = terminal ? activeByTerminal[terminal.id] ?? null : null;
+  const active = conversations.find((item) => item.id === activeId) ?? null;
+  const availableModels = useMemo(
+    () => (activeProfile ? getAvailableModels(activeProfile) : []),
+    [activeProfile],
+  );
+  const selectedModel = activeProfile
+    ? resolveConversationModel(activeProfile, active?.modelSelection)
+    : "";
+  const sending = active ? Boolean(runningByConversation[active.id]) : false;
+  const terminalBusyConversationId = terminal ? runningByTerminal[terminal.id] : undefined;
+  const terminalBusy = Boolean(terminalBusyConversationId);
+  const error = agentError ?? (active ? errorsByConversation[active.id] : null) ?? null;
+
+  useEffect(() => {
+    void initializeChatHistory();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-
     const loadAgents = async () => {
       setLoadingAgents(true);
-      setError(null);
+      setAgentError(null);
       try {
         const response = await agentApi.getAgentConfigs();
         if (cancelled) return;
-
         if (response.code !== "0000" || !response.data?.length) {
           setAgents([]);
-          setError(response.info || "服务端没有可用智能体");
-          setLoadingAgents(false);
+          setAgentError(response.info || "服务端没有可用智能体");
           return;
         }
-
-        const nextAgents = response.data.map((agent) => ({
+        setAgents(response.data.map((agent) => ({
           id: agent.agentId,
           name: agent.agentName,
           description: agent.agentDesc,
-        }));
-        const firstAgent = nextAgents[0];
-        const initialConversation = createConversation(firstAgent.id);
-
-        setAgents(nextAgents);
-        dispatch({
-          type: "reconcile_agents",
-          availableAgentIds: nextAgents.map((agent) => agent.id),
-          fallbackAgentId: firstAgent.id,
-          initialConversation,
-        });
-        setActiveId((current) => current ?? initialConversation.id);
-        setLoadingAgents(false);
+        })));
       } catch (reason) {
         if (cancelled) return;
-        const message = reason instanceof Error ? reason.message : "智能体列表加载失败";
         setAgents([]);
-        setError(message);
-        setLoadingAgents(false);
+        setAgentError(reason instanceof Error ? reason.message : "智能体列表加载失败");
+      } finally {
+        if (!cancelled) setLoadingAgents(false);
       }
     };
-
     void loadAgents();
     return () => {
       cancelled = true;
@@ -294,27 +117,79 @@ export function useChat(terminalSessionId?: string) {
   }, [serverUrl]);
 
   useEffect(() => {
-    dispatch({ type: "reset_sessions" });
-  }, [userId]);
+    const firstAgent = agents[0];
+    if (!hydrated || !firstAgent) return;
+    useChatStore.getState().reconcileAgents(
+      agents.map((agent) => agent.id),
+      firstAgent.id,
+    );
+  }, [agents, hydrated]);
 
-  useEffect(() => () => streamAbortRef.current?.abort(), []);
+  useEffect(() => {
+    const firstAgent = agents[0];
+    if (!hydrated || !firstAgent || !terminal) return;
+    useChatStore.getState().ensureConversation({
+      agentId: firstAgent.id,
+      serverId: terminal.serverId,
+      serverLabel: displayServerName(server, terminal),
+      terminalId: terminal.id,
+    });
+  }, [agents, hydrated, server, terminal]);
+
+  useEffect(() => {
+    const identity = `${serverUrl}|${userId}`;
+    if (identityRef.current !== identity) {
+      useChatStore.getState().resetSessions();
+      identityRef.current = identity;
+    }
+  }, [serverUrl, userId]);
 
   const newConversation = useCallback(() => {
     const firstAgent = agents[0];
-    if (!firstAgent) return;
-    const conversation = createConversation(firstAgent.id);
-    dispatch({ type: "prepend_conversation", conversation });
-    setActiveId(conversation.id);
-  }, [agents]);
+    if (!terminal || !firstAgent) return;
+    useChatStore.getState().createConversation({
+      agentId: firstAgent.id,
+      serverId: terminal.serverId,
+      serverLabel: displayServerName(server, terminal),
+      terminalId: terminal.id,
+    });
+  }, [agents, server, terminal]);
 
-  const setAgent = useCallback((agentId: string) => {
-    if (!activeId || !agents.some((agent) => agent.id === agentId)) return;
-    dispatch({ type: "set_agent", conversationId: activeId, agentId });
-  }, [activeId, agents]);
+  const setActiveConversation = useCallback((conversationId: string) => {
+    if (!terminal) return false;
+    const conversation = useChatStore.getState().conversations.find(
+      (item) => item.id === conversationId,
+    );
+    if (!conversation || conversation.serverId !== terminal.serverId) return false;
+    useChatStore.getState().bindConversation(terminal.id, conversationId);
+    return true;
+  }, [terminal]);
+
+  const setModel = useCallback((model: string) => {
+    if (!activeId || !activeProfile || !availableModels.includes(model)) return;
+    useChatStore.getState().dispatch({
+      type: "set_model",
+      conversationId: activeId,
+      selection: model === activeProfile.model
+        ? undefined
+        : { profileId: activeProfile.id, model },
+    });
+  }, [activeId, activeProfile, availableModels]);
+
+  const stopMessage = useCallback(() => {
+    if (!activeId) return;
+    streamControllers.get(activeId)?.abort();
+  }, [activeId]);
 
   const sendMessage = useCallback(async (text: string) => {
     const content = text.trim();
-    if (!content || !active || sending) return;
+    if (!content || !terminal?.backendSessionId || terminal.status !== "connected") return;
+
+    const state = useChatStore.getState();
+    const conversationId = state.activeByTerminal[terminal.id];
+    const conversation = state.conversations.find((item) => item.id === conversationId);
+    if (!conversation || conversation.serverId !== terminal.serverId) return;
+    if (state.runningByConversation[conversation.id] || state.runningByTerminal[terminal.id]) return;
 
     const turnId = uid();
     const statusItemId = `${turnId}:status`;
@@ -324,21 +199,19 @@ export function useChat(terminalSessionId?: string) {
       prompt: content,
       status: "running",
       statusText: "正在处理请求",
-      items: [
-        {
-          id: statusItemId,
-          type: "status",
-          status: "running",
-          content: "正在处理请求",
-          createdAt,
-        },
-      ],
+      items: [{
+        id: statusItemId,
+        type: "status",
+        status: "running",
+        content: "正在处理请求",
+        createdAt,
+      }],
       createdAt,
     };
 
-    dispatch({ type: "start_turn", conversationId: active.id, turn });
-    setSending(true);
-    setError(null);
+    state.dispatch({ type: "start_turn", conversationId: conversation.id, turn });
+    state.setRunning(conversation.id, terminal.id, true);
+    state.setError(conversation.id, null);
 
     let animationFrameId: number | null = null;
     const pendingText = new Map<string, AssistantTextItem>();
@@ -350,9 +223,9 @@ export function useChat(terminalSessionId?: string) {
       const pendingItems = [...pendingText.values()];
       pendingText.clear();
       pendingItems.forEach((item) => {
-        dispatch({
+        useChatStore.getState().dispatch({
           type: "append_text",
-          conversationId: active.id,
+          conversationId: conversation.id,
           turnId,
           item,
         });
@@ -375,24 +248,33 @@ export function useChat(terminalSessionId?: string) {
       }
     };
 
+    let abortController: AbortController | null = null;
     try {
-      if (!activeProfile) {
-        throw new Error("请先在设置中配置并启用 AI 模型");
-      }
+      if (!activeProfile) throw new Error("请先在设置中配置并启用 AI 模型");
       const apiKey = await readAiSecretForRequest(activeProfile.credentialId);
+      const model = resolveConversationModel(activeProfile, conversation.modelSelection);
 
-      let sessionId = active.serverSessionId;
+      let sessionId = conversation.serverSessionId;
       if (!sessionId) {
-        const sessionResponse = await agentApi.createSession(active.agentId, userId);
+        const sessionResponse = await agentApi.createSession(
+          conversation.agentId,
+          userId,
+          terminal.serverId,
+          terminal.backendSessionId,
+        );
         if (sessionResponse.code !== "0000" || !sessionResponse.data?.sessionId) {
           throw new Error(sessionResponse.info || "创建会话失败");
         }
         sessionId = sessionResponse.data.sessionId;
-        dispatch({ type: "set_session", conversationId: active.id, sessionId });
+        useChatStore.getState().dispatch({
+          type: "set_session",
+          conversationId: conversation.id,
+          sessionId,
+        });
       }
 
-      const abortController = new AbortController();
-      streamAbortRef.current = abortController;
+      abortController = new AbortController();
+      streamControllers.set(conversation.id, abortController);
       const toolCalls = new Set<string>();
       let activeTextItemId: string | null = null;
       let receivedText = "";
@@ -402,16 +284,17 @@ export function useChat(terminalSessionId?: string) {
 
       for await (const event of agentApi.streamChatMessage(
         {
-          agentId: active.agentId,
+          agentId: conversation.agentId,
           userId,
           sessionId,
           message: content,
-          terminalSessionId,
+          connectionId: terminal.serverId,
+          terminalSessionId: terminal.backendSessionId,
           runtimeModel: {
             provider: activeProfile.provider,
             baseUrl: activeProfile.baseUrl,
             apiKey,
-            model: activeProfile.model,
+            model,
             temperature: activeProfile.temperature,
             maxTokens: activeProfile.maxTokens,
           },
@@ -419,12 +302,11 @@ export function useChat(terminalSessionId?: string) {
         abortController.signal,
       )) {
         const eventTime = event.timestamp ?? Date.now();
-
         if (event.event === "status") {
           const status = normalizeResultStatus(event.status);
-          dispatch({
+          useChatStore.getState().dispatch({
             type: "set_status",
-            conversationId: active.id,
+            conversationId: conversation.id,
             turnId,
             item: {
               id: statusItemId,
@@ -450,9 +332,9 @@ export function useChat(terminalSessionId?: string) {
           activeTextItemId = null;
           textSinceLastTool = false;
           toolCalls.add(event.toolCallId);
-          dispatch({
+          useChatStore.getState().dispatch({
             type: "upsert_tool",
-            conversationId: active.id,
+            conversationId: conversation.id,
             turnId,
             item: {
               id: `${turnId}:tool:${event.toolCallId}`,
@@ -474,9 +356,9 @@ export function useChat(terminalSessionId?: string) {
           toolFailed ||= status === "error";
           const startedAt = event.startedAt ?? eventTime;
           const completedAt = event.completedAt ?? eventTime;
-          dispatch({
+          useChatStore.getState().dispatch({
             type: "upsert_tool",
-            conversationId: active.id,
+            conversationId: conversation.id,
             turnId,
             item: {
               id: `${turnId}:tool:${event.toolCallId}`,
@@ -509,10 +391,7 @@ export function useChat(terminalSessionId?: string) {
         }
       }
 
-      if (!receivedDone) {
-        throw new Error("智能体流式连接提前结束，请重试");
-      }
-
+      if (!receivedDone) throw new Error("智能体流式连接提前结束，请重试");
       if (!receivedText || (toolCalls.size > 0 && !textSinceLastTool)) {
         activeTextItemId = uid();
         queueText(
@@ -526,19 +405,30 @@ export function useChat(terminalSessionId?: string) {
       }
 
       flushPendingText();
-      dispatch({
+      useChatStore.getState().dispatch({
         type: "complete_turn",
-        conversationId: active.id,
+        conversationId: conversation.id,
         turnId,
         statusItemId,
         completedAt: Date.now(),
       });
     } catch (reason) {
       flushPendingText();
-      const message = reason instanceof Error ? reason.message : "对话请求失败";
-      dispatch({
+      const stopped = reason instanceof DOMException && reason.name === "AbortError";
+      const message = stopped
+        ? "已停止处理"
+        : reason instanceof Error
+          ? reason.message
+          : "对话请求失败";
+      if (message.includes("会话不存在或已失效") || message.includes("Session not found")) {
+        useChatStore.getState().dispatch({
+          type: "clear_session",
+          conversationId: conversation.id,
+        });
+      }
+      useChatStore.getState().dispatch({
         type: "fail_turn",
-        conversationId: active.id,
+        conversationId: conversation.id,
         turnId,
         statusItemId,
         completedAt: Date.now(),
@@ -549,27 +439,33 @@ export function useChat(terminalSessionId?: string) {
           createdAt: Date.now(),
         },
       });
+      useChatStore.getState().setError(conversation.id, stopped ? null : message);
     } finally {
-      if (animationFrameId !== null || pendingText.size > 0) {
-        flushPendingText();
+      if (animationFrameId !== null || pendingText.size > 0) flushPendingText();
+      if (abortController && streamControllers.get(conversation.id) === abortController) {
+        streamControllers.delete(conversation.id);
       }
-      streamAbortRef.current = null;
-      setSending(false);
+      useChatStore.getState().setRunning(conversation.id, terminal.id, false);
     }
-  }, [active, activeProfile, sending, terminalSessionId, userId]);
+  }, [activeProfile, terminal, userId]);
 
   return {
     agents,
     conversations,
     active,
     activeId,
+    activeProfile,
+    availableModels,
+    selectedModel,
+    hydrated,
     loadingAgents,
     sending,
+    terminalBusy,
     error,
-    activeProfile,
-    setActiveConversation: setActiveId,
     newConversation,
-    setAgent,
+    setActiveConversation,
+    setModel,
     sendMessage,
+    stopMessage,
   };
 }
