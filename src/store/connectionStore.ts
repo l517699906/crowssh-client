@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { SSHConnection, ServerStatus } from '../types/index'
 import * as sshApi from '../api/sshConnection'
 import type { SshConnectionDTO, SshConnectionPayload } from '../api/sshConnection'
+import { API_BASE_URL } from '../api/request'
 
 interface ConnectionStore {
     // 连接列表
@@ -57,7 +58,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     currentConnectionId: null,
     serverStatus: {
         connected: false,
-        url: 'http://localhost:8091',
+        url: API_BASE_URL,
     },
     loading: false,
     error: null,

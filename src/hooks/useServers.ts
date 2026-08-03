@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ServerConfig } from "../types";
 import * as sshApi from "../api/sshConnection";
 import type { SshConnectionDTO, SshConnectionPayload } from "../api/sshConnection";
+import {
+  deleteSshCredentials,
+  readSshCredentials,
+  saveSshCredentials,
+  type SshCredentials,
+} from "../api/sshSecrets";
 import { useSettingsStore } from "../store/settingsStore";
 import { load, save } from "../lib/storage";
 import { DEFAULT_CONNECTION_OPTIONS } from "../types";
@@ -68,9 +74,29 @@ function toSessionCredentials(config: ServerConfig | Omit<ServerConfig, "id">): 
     : null;
 }
 
+function fromStoredCredentials(credentials: SshCredentials | null): SessionCredentials | null {
+  if (!credentials) return null;
+  return credentials.type === "password"
+    ? { password: credentials.password }
+    : { privateKey: credentials.privateKey, passphrase: credentials.passphrase };
+}
+
+function toStoredCredentials(
+  config: ServerConfig | Omit<ServerConfig, "id">,
+): SshCredentials | null {
+  const credentials = toSessionCredentials(config);
+  if (!credentials) return null;
+  return config.authType === "password"
+    ? { type: "password", password: credentials.password! }
+    : {
+        type: "key",
+        privateKey: credentials.privateKey!,
+        passphrase: credentials.passphrase,
+      };
+}
+
 export function useServers() {
   const userId = useSettingsStore((state) => state.userId);
-  const serverUrl = useSettingsStore((state) => state.serverUrl);
   const credentialsRef = useRef<CredentialMap>({});
   const optionsRef = useRef<ConnectionOptionsMap>(load<ConnectionOptionsMap>(OPTIONS_KEY, {}));
   const [servers, setServers] = useState<ServerConfig[]>([]);
@@ -78,21 +104,24 @@ export function useServers() {
   const [error, setError] = useState<string | null>(null);
 
   const rememberCredentials = useCallback(
-    (connectionId: string, config: ServerConfig | Omit<ServerConfig, "id">) => {
+    async (connectionId: string, config: ServerConfig | Omit<ServerConfig, "id">) => {
       const credentials = toSessionCredentials(config);
       if (credentials) {
         credentialsRef.current = { ...credentialsRef.current, [connectionId]: credentials };
+        await saveSshCredentials(connectionId, toStoredCredentials(config)!);
         return;
       }
       const { [connectionId]: _, ...next } = credentialsRef.current;
       credentialsRef.current = next;
+      await deleteSshCredentials(connectionId);
     },
     [],
   );
 
-  const forgetCredentials = useCallback((connectionId: string) => {
+  const forgetCredentials = useCallback(async (connectionId: string) => {
     const { [connectionId]: _, ...next } = credentialsRef.current;
     credentialsRef.current = next;
+    await deleteSshCredentials(connectionId);
   }, []);
 
   const rememberOptions = useCallback(
@@ -123,11 +152,28 @@ export function useServers() {
     setError(null);
     const response = await sshApi.getConnectionList(userId);
     if (response.code === "0000") {
-      setServers(
-        (response.data ?? []).map((item) =>
-          toServerConfig(item, credentialsRef.current, optionsRef.current),
-        ),
+      let credentialReadFailed = false;
+      const items = response.data ?? [];
+      const loadedCredentials = await Promise.all(
+        items.map(async (item) => {
+          const cached = credentialsRef.current[item.connectionId];
+          if (cached) return [item.connectionId, cached] as const;
+          try {
+            const stored = await readSshCredentials(item.connectionId);
+            return [item.connectionId, fromStoredCredentials(stored)] as const;
+          } catch {
+            credentialReadFailed = true;
+            return [item.connectionId, null] as const;
+          }
+        }),
       );
+      const nextCredentials = { ...credentialsRef.current };
+      for (const [connectionId, credentials] of loadedCredentials) {
+        if (credentials) nextCredentials[connectionId] = credentials;
+      }
+      credentialsRef.current = nextCredentials;
+      setServers(items.map((item) => toServerConfig(item, nextCredentials, optionsRef.current)));
+      if (credentialReadFailed) setError("部分服务器凭据无法从系统钥匙串读取");
     } else {
       setError(response.info || "无法读取服务端连接列表");
     }
@@ -136,7 +182,7 @@ export function useServers() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh, serverUrl]);
+  }, [refresh]);
 
   const addServer = useCallback(
     async (config: Omit<ServerConfig, "id">): Promise<boolean> => {
@@ -147,7 +193,11 @@ export function useServers() {
         return false;
       }
 
-      rememberCredentials(response.data.connectionId, config);
+      try {
+        await rememberCredentials(response.data.connectionId, config);
+      } catch {
+        setError("服务器已创建，但凭据无法保存到系统钥匙串");
+      }
       rememberOptions(response.data.connectionId, config);
       const server = toServerConfig(response.data, credentialsRef.current, optionsRef.current);
       setServers((current) => [server, ...current]);
@@ -165,7 +215,11 @@ export function useServers() {
         return false;
       }
 
-      rememberCredentials(config.id, config);
+      try {
+        await rememberCredentials(config.id, config);
+      } catch {
+        setError("服务器已更新，但凭据无法保存到系统钥匙串");
+      }
       rememberOptions(config.id, config);
       const server = toServerConfig(response.data, credentialsRef.current, optionsRef.current);
       setServers((current) => current.map((item) => (item.id === config.id ? server : item)));
@@ -183,7 +237,11 @@ export function useServers() {
         return false;
       }
 
-      forgetCredentials(id);
+      try {
+        await forgetCredentials(id);
+      } catch {
+        setError("服务器已删除，但系统钥匙串中的凭据清理失败");
+      }
       forgetOptions(id);
       setServers((current) => current.filter((item) => item.id !== id));
       return true;

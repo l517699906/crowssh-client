@@ -215,6 +215,19 @@
   padding-right: 38px;
 }
 
+.private-key-input .textarea {
+  padding-right: 38px;
+}
+
+.private-key-input .password-visibility {
+  top: 4px;
+  transform: none;
+}
+
+.private-key-input .secret-masked {
+  -webkit-text-security: disc;
+}
+
 .password-visibility {
   position: absolute;
   top: 50%;

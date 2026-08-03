@@ -86,13 +86,19 @@ export function AiSettingsDialog({ onClose }: Props) {
   useEffect(() => {
     let cancelled = false;
     setSecret("");
+    setShowSecret(false);
     setSecretStatus(EMPTY_SECRET_STATUS);
     setStatus(null);
     setConfirmDelete(false);
 
     void getAiSecretStatus(draft.credentialId)
-      .then((nextStatus) => {
-        if (!cancelled) setSecretStatus(nextStatus);
+      .then(async (nextStatus) => {
+        if (cancelled) return;
+        setSecretStatus(nextStatus);
+        if (!nextStatus.configured) return;
+
+        const savedSecret = await readAiSecretForRequest(draft.credentialId);
+        if (!cancelled) setSecret(savedSecret);
       })
       .catch((error: unknown) => {
         if (!cancelled && !isNew) {
@@ -141,9 +147,10 @@ export function AiSettingsDialog({ onClose }: Props) {
       modelsFetchedAt: draft.availableModels?.length ? draft.modelsFetchedAt : undefined,
     };
     if (secret.trim()) {
-      const nextSecretStatus = await saveAiSecret(draft.credentialId, secret);
+      const normalizedSecret = secret.trim();
+      const nextSecretStatus = await saveAiSecret(draft.credentialId, normalizedSecret);
       setSecretStatus(nextSecretStatus);
-      setSecret("");
+      setSecret(normalizedSecret);
       nextProfile = { ...nextProfile, keyLastFour: nextSecretStatus.lastFour };
     }
 
@@ -408,11 +415,11 @@ export function AiSettingsDialog({ onClose }: Props) {
               <label className="field">
                 <span className="field-label ai-secret-label">
                   API Key
-                  <span className={secretStatus.configured ? "configured" : "missing"}>
-                    {secretStatus.configured
-                      ? `已保存 ····${secretStatus.lastFour ?? draft.keyLastFour ?? ""}`
-                      : "未保存"}
-                  </span>
+                  {/*<span className={secretStatus.configured ? "configured" : "missing"}>*/}
+                  {/*  {secretStatus.configured*/}
+                  {/*    ? `已保存 ····${secretStatus.lastFour ?? draft.keyLastFour ?? ""}`*/}
+                  {/*    : "未保存"}*/}
+                  {/*</span>*/}
                 </span>
                 <span className="password-input">
                   <input
@@ -421,7 +428,7 @@ export function AiSettingsDialog({ onClose }: Props) {
                     value={secret}
                     disabled={busy !== null}
                     autoComplete="off"
-                    placeholder={secretStatus.configured ? "留空则保持现有密钥" : "输入 API Key"}
+                    placeholder="输入 API Key"
                     onChange={(event) => {
                       setSecret(event.target.value);
                       setDraft((current) => ({

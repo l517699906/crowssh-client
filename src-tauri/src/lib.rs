@@ -1,5 +1,6 @@
 mod ai_secrets;
 mod ssh;
+mod ssh_secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -11,6 +12,9 @@ pub fn run() {
             ai_secrets::ai_secret_status,
             ai_secrets::ai_secret_read_for_request,
             ai_secrets::ai_secret_delete,
+            ssh_secrets::ssh_credentials_save,
+            ssh_secrets::ssh_credentials_read,
+            ssh_secrets::ssh_credentials_delete,
             ssh::ssh_connect,
             ssh::ssh_test_connection,
             ssh::ssh_send_input,

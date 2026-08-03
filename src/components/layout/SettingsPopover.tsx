@@ -1,7 +1,5 @@
-import { useEffect, useState, type RefObject } from "react";
-import { KeyRound, LoaderCircle, RotateCcw, Server } from "lucide-react";
-import { checkServerHealth } from "../../api/health";
-import { useSettingsStore } from "../../store/settingsStore";
+import { useEffect, type RefObject } from "react";
+import { KeyRound, RotateCcw } from "lucide-react";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useThemeStore } from "../../store/themeStore";
 import type { ThemeMode } from "../../store/themeStore";
@@ -22,12 +20,7 @@ interface Props {
 export function SettingsPopover({ onClose, onOpenAiSettings, anchorRef }: Props) {
   const mode = useThemeStore((s) => s.mode);
   const setMode = useThemeStore((s) => s.setMode);
-  const serverUrl = useSettingsStore((s) => s.serverUrl);
-  const setServerUrl = useSettingsStore((s) => s.setServerUrl);
   const resetLayout = useLayoutStore((s) => s.reset);
-  const [draftServerUrl, setDraftServerUrl] = useState(serverUrl);
-  const [status, setStatus] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -43,26 +36,6 @@ export function SettingsPopover({ onClose, onOpenAiSettings, anchorRef }: Props)
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [anchorRef, onClose]);
-
-  const saveServerUrl = (): boolean => {
-    try {
-      const normalized = setServerUrl(draftServerUrl);
-      setDraftServerUrl(normalized);
-      setStatus("服务端地址已保存");
-      return true;
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "服务端地址不可用");
-      return false;
-    }
-  };
-
-  const testServer = async () => {
-    if (!saveServerUrl()) return;
-    setTesting(true);
-    const response = await checkServerHealth();
-    setTesting(false);
-    setStatus(response.code === "0000" ? "服务端连接正常" : response.info || "服务端不可达");
-  };
 
   return (
     <div className="settings-popover" role="dialog" aria-label="设置">
@@ -82,29 +55,6 @@ export function SettingsPopover({ onClose, onOpenAiSettings, anchorRef }: Props)
       </div>
 
       <div className="settings-section">
-        <div className="settings-title">服务端</div>
-        <label className="settings-field">
-          <span>地址</span>
-          <input
-            className="input"
-            value={draftServerUrl}
-            onChange={(e) => setDraftServerUrl(e.target.value)}
-            onBlur={saveServerUrl}
-            placeholder="http://localhost:8091"
-          />
-        </label>
-        <div className="settings-actions">
-          <button className="btn" type="button" onClick={saveServerUrl}>
-            保存
-          </button>
-          <button className="btn" type="button" onClick={() => void testServer()} disabled={testing}>
-            {testing ? <LoaderCircle size={14} className="spin" /> : <Server size={14} />}
-            检测
-          </button>
-        </div>
-      </div>
-
-      <div className="settings-section">
         <div className="settings-title">AI</div>
         <button className="btn settings-wide-action" type="button" onClick={onOpenAiSettings}>
           <KeyRound size={14} /> 管理密钥与模型
@@ -115,7 +65,6 @@ export function SettingsPopover({ onClose, onOpenAiSettings, anchorRef }: Props)
         <button className="btn" type="button" onClick={resetLayout}>
           <RotateCcw size={14} /> 重置界面布局
         </button>
-        {status && <div className="settings-status" role="status">{status}</div>}
       </div>
     </div>
   );

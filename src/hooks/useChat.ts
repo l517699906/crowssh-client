@@ -51,7 +51,6 @@ function resolveConversationModel(
 
 export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
   const userId = useSettingsStore((state) => state.userId);
-  const serverUrl = useSettingsStore((state) => state.serverUrl);
   const activeProfile = useAiConfigStore((state) =>
     state.profiles.find((profile) => profile.id === state.activeProfileId),
   );
@@ -64,7 +63,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [agentError, setAgentError] = useState<string | null>(null);
-  const identityRef = useRef(`${serverUrl}|${userId}`);
+  const identityRef = useRef(userId);
 
   const activeId = terminal ? activeByTerminal[terminal.id] ?? null : null;
   const active = conversations.find((item) => item.id === activeId) ?? null;
@@ -114,7 +113,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     return () => {
       cancelled = true;
     };
-  }, [serverUrl]);
+  }, []);
 
   useEffect(() => {
     const firstAgent = agents[0];
@@ -137,12 +136,11 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
   }, [agents, hydrated, server, terminal]);
 
   useEffect(() => {
-    const identity = `${serverUrl}|${userId}`;
-    if (identityRef.current !== identity) {
+    if (identityRef.current !== userId) {
       useChatStore.getState().resetSessions();
-      identityRef.current = identity;
+      identityRef.current = userId;
     }
-  }, [serverUrl, userId]);
+  }, [userId]);
 
   const newConversation = useCallback(() => {
     const firstAgent = agents[0];
@@ -301,6 +299,14 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
         },
         abortController.signal,
       )) {
+        if (event.sessionId && event.sessionId !== sessionId) {
+          sessionId = event.sessionId;
+          useChatStore.getState().dispatch({
+            type: "set_session",
+            conversationId: conversation.id,
+            sessionId,
+          });
+        }
         const eventTime = event.timestamp ?? Date.now();
         if (event.event === "status") {
           const status = normalizeResultStatus(event.status);

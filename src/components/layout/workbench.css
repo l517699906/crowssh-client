@@ -195,24 +195,6 @@
   width: 100%;
 }
 
-.settings-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  color: var(--fg-muted);
-  font-size: 12px;
-}
-
-.settings-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.settings-actions .btn {
-  flex: 1;
-}
-
 .settings-bottom-action {
   display: flex;
   flex-direction: column;
@@ -221,10 +203,4 @@
 
 .settings-bottom-action .btn {
   width: 100%;
-}
-
-.settings-status {
-  color: var(--fg-muted);
-  font-size: 12px;
-  line-height: 1.4;
 }

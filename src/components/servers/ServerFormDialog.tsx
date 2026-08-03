@@ -40,6 +40,7 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [privateKeyVisible, setPrivateKeyVisible] = useState(false);
   const [passphraseVisible, setPassphraseVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -259,13 +260,23 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
                 <>
                   <div className="field">
                     <label className="field-label">私钥内容 (PEM)</label>
-                    <textarea
-                      className="textarea"
-                      rows={4}
-                      value={privateKey}
-                      onChange={(e) => setPrivateKey(e.target.value)}
-                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                    />
+                    <div className="password-input private-key-input">
+                      <textarea
+                        className={`textarea${privateKeyVisible ? "" : " secret-masked"}`}
+                        rows={4}
+                        value={privateKey}
+                        onChange={(e) => setPrivateKey(e.target.value)}
+                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                      />
+                      <button
+                        className="icon-btn password-visibility"
+                        type="button"
+                        onClick={() => setPrivateKeyVisible((visible) => !visible)}
+                        aria-label={privateKeyVisible ? "隐藏私钥" : "显示私钥"}
+                      >
+                        {privateKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                   <div className="field">
                     <label className="field-label">私钥口令（可选）</label>
@@ -295,7 +306,7 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
                   checked={savePassword}
                   onChange={(e) => setSavePassword(e.target.checked)}
                 />
-                本次运行中保留终端凭据
+                将终端凭据保存在系统钥匙串
               </label>
             </div>
           ) : (
