@@ -51,6 +51,7 @@ export async function openRemoteTextEditor(target: RemoteEditorTarget) {
     return;
   }
 
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
@@ -60,6 +61,7 @@ export async function openRemoteTextEditor(target: RemoteEditorTarget) {
     return;
   }
 
+  const decorations = await getCurrentWindow().isDecorated();
   await new Promise<void>((resolve, reject) => {
     const editor = new WebviewWindow(label, {
       url: editorUrl(target),
@@ -71,6 +73,8 @@ export async function openRemoteTextEditor(target: RemoteEditorTarget) {
       center: true,
       focus: true,
       resizable: true,
+      decorations,
+      shadow: true,
     });
     void editor.once("tauri://created", () => resolve());
     void editor.once<unknown>("tauri://error", (event) => {

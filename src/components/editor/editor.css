@@ -12,6 +12,10 @@
   grid-template-rows: 46px auto minmax(0, 1fr) 25px;
 }
 
+.remote-editor.document-unavailable {
+  grid-template-rows: 46px minmax(0, 1fr);
+}
+
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -21,6 +25,10 @@
   gap: 12px;
   border-bottom: 1px solid var(--border);
   background-color: var(--bg-island);
+}
+
+.editor-toolbar .window-titlebar-content {
+  gap: 12px;
 }
 
 .editor-file-heading,

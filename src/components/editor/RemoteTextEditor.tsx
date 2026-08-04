@@ -28,6 +28,7 @@ import {
   type RemoteTextSavedEvent,
 } from "../../services/editorWindowService";
 import { useThemeStore } from "../../store/themeStore";
+import { WindowTitleBar } from "../common/WindowTitleBar";
 
 interface Props {
   target: RemoteEditorTarget;
@@ -272,44 +273,13 @@ export function RemoteTextEditor({ target }: Props) {
         ? "已保存"
         : "已同步";
 
-  if (requestState === "loading" && !documentInfo) {
-    return (
-      <main className="editor-loading">
-        <LoaderCircle size={28} className="spin" />
-        <span>正在读取 {target.fileName}</span>
-      </main>
-    );
-  }
-
-  if (!documentInfo) {
-    return (
-      <main className="editor-load-error">
-        <AlertTriangle size={30} />
-        <h1>无法打开 {target.fileName}</h1>
-        <p>{errorMessage || "读取远程文件失败"}</p>
-        <div className="editor-error-actions">
-          <button className="btn btn-primary" type="button" onClick={() => void loadDocument(false)}>
-            <RefreshCw size={14} /> 重试
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              void closeCurrentWindow().catch((reason) => {
-                setErrorMessage(`无法关闭编辑器窗口：${messageOf(reason)}`);
-              });
-            }}
-          >
-            关闭
-          </button>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main className={`remote-editor${errorMessage ? " has-notice" : ""}`}>
-      <header className="editor-toolbar">
+    <main
+      className={`remote-editor${
+        documentInfo ? (errorMessage ? " has-notice" : "") : " document-unavailable"
+      }`}
+    >
+      <WindowTitleBar className="editor-toolbar">
         <div className="editor-file-heading" title={target.path}>
           <FileCode2 size={16} />
           <div className="editor-file-copy">
@@ -317,80 +287,131 @@ export function RemoteTextEditor({ target }: Props) {
             <span>{target.serverName} · {target.path}</span>
           </div>
         </div>
-        <div className="editor-toolbar-actions">
-          <span className={`editor-save-state ${dirty ? "dirty" : ""}`}>
-            {requestState === "saving" ? <LoaderCircle size={13} className="spin" /> : <Check size={13} />}
-            {statusLabel}
-          </span>
-          <button
-            className={`icon-btn${wrapLines ? " active" : ""}`}
-            type="button"
-            title="自动换行"
-            aria-pressed={wrapLines}
-            onClick={() => setWrapLines((current) => !current)}
-          >
-            <WrapText size={16} />
-          </button>
-          <button
-            className="icon-btn"
-            type="button"
-            title="重新加载"
-            disabled={requestState === "saving" || requestState === "loading"}
-            onClick={() => void loadDocument(true)}
-          >
-            <RefreshCw size={16} className={requestState === "loading" ? "spin" : undefined} />
-          </button>
-          <button
-            className="icon-btn editor-save-button"
-            type="button"
-            title="保存"
-            disabled={!dirty || requestState === "saving"}
-            onClick={() => void handleSave()}
-          >
-            <Save size={16} />
-          </button>
-        </div>
-      </header>
+        {documentInfo && (
+          <div className="editor-toolbar-actions">
+            <span className={`editor-save-state ${dirty ? "dirty" : ""}`}>
+              {requestState === "saving" ? (
+                <LoaderCircle size={13} className="spin" />
+              ) : (
+                <Check size={13} />
+              )}
+              {statusLabel}
+            </span>
+            <button
+              className={`icon-btn${wrapLines ? " active" : ""}`}
+              type="button"
+              title="自动换行"
+              aria-pressed={wrapLines}
+              onClick={() => setWrapLines((current) => !current)}
+            >
+              <WrapText size={16} />
+            </button>
+            <button
+              className="icon-btn"
+              type="button"
+              title="重新加载"
+              disabled={requestState === "saving" || requestState === "loading"}
+              onClick={() => void loadDocument(true)}
+            >
+              <RefreshCw
+                size={16}
+                className={requestState === "loading" ? "spin" : undefined}
+              />
+            </button>
+            <button
+              className="icon-btn editor-save-button"
+              type="button"
+              title="保存"
+              disabled={!dirty || requestState === "saving"}
+              onClick={() => void handleSave()}
+            >
+              <Save size={16} />
+            </button>
+          </div>
+        )}
+      </WindowTitleBar>
 
-      {errorMessage && (
-        <div className={`editor-notice ${requestState === "conflict" ? "conflict" : "error"}`} role="alert">
-          <AlertTriangle size={15} />
-          <span>{errorMessage}</span>
-          {requestState === "conflict" && (
-            <button type="button" onClick={() => void loadDocument(true)}>重新加载</button>
+      {!documentInfo ? (
+        requestState === "loading" ? (
+          <section className="editor-loading">
+            <LoaderCircle size={28} className="spin" />
+            <span>正在读取 {target.fileName}</span>
+          </section>
+        ) : (
+          <section className="editor-load-error">
+            <AlertTriangle size={30} />
+            <h1>无法打开 {target.fileName}</h1>
+            <p>{errorMessage || "读取远程文件失败"}</p>
+            <div className="editor-error-actions">
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void loadDocument(false)}
+              >
+                <RefreshCw size={14} /> 重试
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  void closeCurrentWindow().catch((reason) => {
+                    setErrorMessage(`无法关闭编辑器窗口：${messageOf(reason)}`);
+                  });
+                }}
+              >
+                关闭
+              </button>
+            </div>
+          </section>
+        )
+      ) : (
+        <>
+          {errorMessage && (
+            <div
+              className={`editor-notice ${requestState === "conflict" ? "conflict" : "error"}`}
+              role="alert"
+            >
+              <AlertTriangle size={15} />
+              <span>{errorMessage}</span>
+              {requestState === "conflict" && (
+                <button type="button" onClick={() => void loadDocument(true)}>
+                  重新加载
+                </button>
+              )}
+            </div>
           )}
-        </div>
+
+          <section className="editor-surface">
+            <CodeMirror
+              value={value}
+              height="100%"
+              theme="none"
+              extensions={extensions}
+              basicSetup
+              autoFocus
+              indentWithTab
+              onChange={(nextValue) => {
+                contentRef.current = nextValue;
+                setValue(nextValue);
+                setDirtyState(true);
+                if (requestState !== "saving") setRequestState("ready");
+                if (requestState !== "conflict") setErrorMessage(null);
+              }}
+              onUpdate={handleEditorUpdate}
+            />
+          </section>
+
+          <footer className="editor-statusbar">
+            <span>行 {cursor.line}，列 {cursor.column}</span>
+            <div>
+              <span>{languageName}</span>
+              <span>{documentInfo.encoding}</span>
+              <span>{documentInfo.lineEnding}</span>
+              <span>{formatSize(documentInfo.size)}</span>
+            </div>
+          </footer>
+        </>
       )}
-
-      <section className="editor-surface">
-        <CodeMirror
-          value={value}
-          height="100%"
-          theme="none"
-          extensions={extensions}
-          basicSetup
-          autoFocus
-          indentWithTab
-          onChange={(nextValue) => {
-            contentRef.current = nextValue;
-            setValue(nextValue);
-            setDirtyState(true);
-            if (requestState !== "saving") setRequestState("ready");
-            if (requestState !== "conflict") setErrorMessage(null);
-          }}
-          onUpdate={handleEditorUpdate}
-        />
-      </section>
-
-      <footer className="editor-statusbar">
-        <span>行 {cursor.line}，列 {cursor.column}</span>
-        <div>
-          <span>{languageName}</span>
-          <span>{documentInfo.encoding}</span>
-          <span>{documentInfo.lineEnding}</span>
-          <span>{formatSize(documentInfo.size)}</span>
-        </div>
-      </footer>
     </main>
   );
 }

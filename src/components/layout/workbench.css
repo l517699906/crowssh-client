@@ -15,11 +15,21 @@
   padding: 0 8px;
   gap: 8px;
 }
+.app-header .window-titlebar-content {
+  gap: 8px;
+}
 .header-left,
 .header-right {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+.header-left {
+  min-width: 0;
+}
+.header-right,
+.header-title {
+  flex-shrink: 0;
 }
 .header-divider {
   width: 1px;

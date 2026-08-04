@@ -221,7 +221,13 @@ export function useServers() {
   const removeServer = useCallback(
     async (id: string): Promise<boolean> => {
       setError(null);
-      const response = await sshApi.deleteConnection(id);
+      let response: Awaited<ReturnType<typeof sshApi.deleteConnection>>;
+      try {
+        response = await sshApi.deleteConnection(id);
+      } catch {
+        setError("删除服务器失败，请稍后重试");
+        return false;
+      }
       if (response.code !== "0000") {
         setError(response.info || "删除连接失败");
         return false;

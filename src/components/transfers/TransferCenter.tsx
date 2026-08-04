@@ -257,7 +257,10 @@ export function TransferCenter() {
           : "文件传输";
 
   return (
-    <div className={`transfer-center${expanded ? " is-expanded" : ""}`}>
+    <div
+      className={`transfer-center${expanded ? " is-expanded" : ""}`}
+      data-window-no-drag
+    >
       <button
         className={`transfer-menu-button${expanded ? " active" : ""}${
           summary.active > 0 ? " transferring" : ""

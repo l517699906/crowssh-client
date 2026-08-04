@@ -44,7 +44,7 @@
   font-family: var(--font-mono);
 }
 .server-actions {
-  display: none;
+  display: flex;
   gap: 2px;
   flex-shrink: 0;
 }
@@ -68,11 +68,6 @@
   border-radius: var(--r-sm);
   background-color: color-mix(in srgb, var(--danger) 9%, transparent);
 }
-.server-item:hover .server-actions,
-.server-item.selected .server-actions {
-  display: flex;
-}
-
 /* ------------------------------ 模态对话框 ------------------------------ */
 .modal-overlay {
   position: fixed;

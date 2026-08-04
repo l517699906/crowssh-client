@@ -2,6 +2,7 @@ import { PanelLeft, Plus, Sparkles, TerminalSquare } from "lucide-react";
 import { useLayoutStore } from "../../store/layoutStore";
 import type { useTerminals } from "../../hooks/useTerminals";
 import { TransferCenter } from "../transfers/TransferCenter";
+import { WindowTitleBar } from "../common/WindowTitleBar";
 
 interface Props {
   terminals: ReturnType<typeof useTerminals>;
@@ -18,7 +19,7 @@ export function Header({ terminals, onAddServer }: Props) {
   const active = terminals.sessions.find((s) => s.id === terminals.activeId);
 
   return (
-    <header className="app-header">
+    <WindowTitleBar className="app-header">
       <div className="header-left">
         <button className="icon-btn" title="折叠侧边栏" onClick={toggleLeft}>
           <PanelLeft size={17} />
@@ -58,6 +59,6 @@ export function Header({ terminals, onAddServer }: Props) {
           <Sparkles size={17} />
         </button>
       </div>
-    </header>
+    </WindowTitleBar>
   );
 }

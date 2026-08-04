@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "CrowSSH",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1000,
+        "minHeight": 640,
+        "decorations": false,
+        "shadow": true
+      }
+    ]
+  }
+}
