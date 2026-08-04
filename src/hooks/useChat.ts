@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   Agent,
   AssistantTextItem,
@@ -14,9 +14,9 @@ import { initializeChatHistory } from "../lib/chatHistory";
 import { uid } from "../lib/storage";
 import { useAiConfigStore } from "../store/aiConfigStore";
 import { useChatStore } from "../store/chatStore";
-import { useSettingsStore } from "../store/settingsStore";
 import {
   normalizeModelIds,
+  runtimeModelConfigFromProfile,
   type AiProfile,
 } from "../types/aiConfig";
 
@@ -50,7 +50,6 @@ function resolveConversationModel(
 }
 
 export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
-  const userId = useSettingsStore((state) => state.userId);
   const activeProfile = useAiConfigStore((state) =>
     state.profiles.find((profile) => profile.id === state.activeProfileId),
   );
@@ -63,7 +62,6 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [agentError, setAgentError] = useState<string | null>(null);
-  const identityRef = useRef(userId);
 
   const activeId = terminal ? activeByTerminal[terminal.id] ?? null : null;
   const active = conversations.find((item) => item.id === activeId) ?? null;
@@ -134,13 +132,6 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
       terminalId: terminal.id,
     });
   }, [agents, hydrated, server, terminal]);
-
-  useEffect(() => {
-    if (identityRef.current !== userId) {
-      useChatStore.getState().resetSessions();
-      identityRef.current = userId;
-    }
-  }, [userId]);
 
   const newConversation = useCallback(() => {
     const firstAgent = agents[0];
@@ -256,7 +247,6 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
       if (!sessionId) {
         const sessionResponse = await agentApi.createSession(
           conversation.agentId,
-          userId,
           terminal.serverId,
           terminal.backendSessionId,
         );
@@ -283,19 +273,11 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
       for await (const event of agentApi.streamChatMessage(
         {
           agentId: conversation.agentId,
-          userId,
           sessionId,
           message: content,
           connectionId: terminal.serverId,
           terminalSessionId: terminal.backendSessionId,
-          runtimeModel: {
-            provider: activeProfile.provider,
-            baseUrl: activeProfile.baseUrl,
-            apiKey,
-            model,
-            temperature: activeProfile.temperature,
-            maxTokens: activeProfile.maxTokens,
-          },
+          runtimeModel: runtimeModelConfigFromProfile(activeProfile, apiKey, model),
         },
         abortController.signal,
       )) {
@@ -453,7 +435,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
       }
       useChatStore.getState().setRunning(conversation.id, terminal.id, false);
     }
-  }, [activeProfile, terminal, userId]);
+  }, [activeProfile, terminal]);
 
   return {
     agents,

@@ -171,6 +171,63 @@
   white-space: nowrap;
 }
 
+.ai-advanced-settings {
+  margin: 2px 0 12px;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ai-advanced-settings > summary {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ai-advanced-settings > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-advanced-settings > summary::after {
+  margin-left: auto;
+  content: "+";
+  color: var(--fg-disabled);
+  font-size: 14px;
+}
+
+.ai-advanced-settings[open] > summary::after {
+  content: "-";
+}
+
+.ai-advanced-content {
+  padding: 2px 0 8px;
+}
+
+.ai-generation-switches {
+  align-items: flex-end;
+}
+
+.ai-checkbox-field {
+  min-height: 30px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.ai-checkbox-field input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .ai-secret-label,
 .ai-range-label {
   display: flex;
@@ -240,6 +297,10 @@
 
   .ai-profile-editor .form-row {
     display: block;
+  }
+
+  .ai-generation-switches .ai-checkbox-field {
+    margin-bottom: 10px;
   }
 
   .ai-model-row {

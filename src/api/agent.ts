@@ -13,7 +13,6 @@ interface CreateSessionDTO {
 
 export interface ChatStreamPayload {
   agentId: string;
-  userId: string;
   sessionId: string;
   message: string;
   connectionId: string;
@@ -63,13 +62,11 @@ export function getAgentConfigs() {
 
 export function createSession(
   agentId: string,
-  userId: string,
   connectionId: string,
   terminalSessionId: string,
 ) {
   return post<CreateSessionDTO>("/api/v1/create_session", {
     agentId,
-    userId,
     connectionId,
     terminalSessionId,
   });

@@ -8,7 +8,6 @@ import {
   saveSshCredentials,
   type SshCredentials,
 } from "../api/sshSecrets";
-import { useSettingsStore } from "../store/settingsStore";
 import { load, save } from "../lib/storage";
 import { DEFAULT_CONNECTION_OPTIONS } from "../types";
 import type { ConnectionOptions } from "../types";
@@ -54,7 +53,7 @@ function toServerConfig(
   };
 }
 
-function toPayload(config: ServerConfig | Omit<ServerConfig, "id">, userId: string): SshConnectionPayload {
+function toPayload(config: ServerConfig | Omit<ServerConfig, "id">): SshConnectionPayload {
   return {
     ...("id" in config ? { connectionId: config.id } : {}),
     connectionName: config.name,
@@ -64,7 +63,6 @@ function toPayload(config: ServerConfig | Omit<ServerConfig, "id">, userId: stri
     authType: config.authType === "key" ? 2 : 1,
     password: config.authType === "password" ? config.password || undefined : undefined,
     privateKey: config.authType === "key" ? config.privateKey || undefined : undefined,
-    userId,
     connectTimeout: config.connectionTimeout,
     keepaliveInterval: config.keepAliveInterval,
     startupCommand: config.startupCommand || undefined,
@@ -105,7 +103,6 @@ function toStoredCredentials(
 }
 
 export function useServers() {
-  const userId = useSettingsStore((state) => state.userId);
   const credentialsRef = useRef<CredentialMap>({});
   const optionsRef = useRef<ConnectionOptionsMap>(load<ConnectionOptionsMap>(OPTIONS_KEY, {}));
   const [servers, setServers] = useState<ServerConfig[]>([]);
@@ -142,7 +139,7 @@ export function useServers() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const response = await sshApi.getConnectionList(userId);
+    const response = await sshApi.getConnectionList();
     if (response.code === "0000") {
       let credentialReadFailed = false;
       const items = response.data ?? [];
@@ -170,7 +167,7 @@ export function useServers() {
       setError(response.info || "无法读取服务端连接列表");
     }
     setLoading(false);
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -179,7 +176,7 @@ export function useServers() {
   const addServer = useCallback(
     async (config: Omit<ServerConfig, "id">): Promise<boolean> => {
       setError(null);
-      const response = await sshApi.createConnection(toPayload(config, userId));
+      const response = await sshApi.createConnection(toPayload(config));
       if (response.code !== "0000" || !response.data) {
         setError(response.info || "创建连接失败");
         return false;
@@ -194,13 +191,13 @@ export function useServers() {
       setServers((current) => [server, ...current]);
       return true;
     },
-    [rememberCredentials, userId],
+    [rememberCredentials],
   );
 
   const updateServer = useCallback(
     async (config: ServerConfig): Promise<boolean> => {
       setError(null);
-      const response = await sshApi.updateConnection(toPayload(config, userId));
+      const response = await sshApi.updateConnection(toPayload(config));
       if (response.code !== "0000" || !response.data) {
         setError(response.info || "更新连接失败");
         return false;
@@ -215,7 +212,7 @@ export function useServers() {
       setServers((current) => current.map((item) => (item.id === config.id ? server : item)));
       return true;
     },
-    [rememberCredentials, userId],
+    [rememberCredentials],
   );
 
   const removeServer = useCallback(

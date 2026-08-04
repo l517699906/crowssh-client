@@ -1,4 +1,5 @@
 mod ai_secrets;
+mod device_identity;
 mod ssh;
 mod ssh_secrets;
 
@@ -12,6 +13,9 @@ pub fn run() {
             ai_secrets::ai_secret_status,
             ai_secrets::ai_secret_read_for_request,
             ai_secrets::ai_secret_delete,
+            device_identity::device_identity_save,
+            device_identity::device_identity_read,
+            device_identity::device_identity_delete,
             ssh_secrets::ssh_credentials_save,
             ssh_secrets::ssh_credentials_read,
             ssh_secrets::ssh_credentials_delete,

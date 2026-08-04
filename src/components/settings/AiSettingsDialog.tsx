@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  Settings2,
   ShieldCheck,
   Trash2,
   X,
@@ -22,10 +23,20 @@ import {
 } from "../../api/aiSecrets";
 import { useAiConfigStore } from "../../store/aiConfigStore";
 import {
+  AUTH_OPTIONS,
+  getProtocolDefaults,
+  getProviderOption,
   normalizeModelIds,
   PROVIDER_OPTIONS,
+  PROTOCOL_OPTIONS,
+  runtimeModelConfigFromProfile,
+  runtimeModelListConfigFromProfile,
+  TOKEN_PARAMETER_OPTIONS,
+  type AiAuthType,
   type AiProfile,
+  type AiProtocol,
   type AiProvider,
+  type AiTokenParameter,
 } from "../../types/aiConfig";
 import "./ai-settings.css";
 
@@ -43,12 +54,35 @@ function validateEndpoint(profile: AiProfile) {
     throw new Error("服务地址必须是完整的 HTTPS 地址");
   }
   if (url.protocol !== "https:") throw new Error("服务地址必须使用 HTTPS");
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error("服务地址不能包含账号、查询参数或锚点");
+  }
+}
+
+function validateRelativePath(path: string) {
+  const value = path.trim().replace(/^\/+/, "");
+  if (!value || value.length > 500 || value.includes("..") || /[?#]/.test(value)) {
+    throw new Error("模型列表路径必须是有效的相对路径");
+  }
+}
+
+function validateCustomAuth(profile: AiProfile) {
+  if (profile.authType !== "custom") return;
+  const header = profile.authHeader?.trim() ?? "";
+  if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,100}$/.test(header)) {
+    throw new Error("自定义鉴权 Header 名称无效");
+  }
+  if ((profile.authPrefix?.length ?? 0) > 100 || /[\r\n]/.test(profile.authPrefix ?? "")) {
+    throw new Error("自定义鉴权前缀无效");
+  }
 }
 
 function validateProfile(profile: AiProfile) {
   if (!profile.name.trim()) throw new Error("配置名称不能为空");
   if (!profile.model.trim()) throw new Error("模型名称不能为空");
   validateEndpoint(profile);
+  validateRelativePath(profile.modelListPath);
+  validateCustomAuth(profile);
   if (profile.temperature < 0 || profile.temperature > 2) {
     throw new Error("Temperature 必须在 0 到 2 之间");
   }
@@ -121,12 +155,34 @@ export function AiSettingsDialog({ onClose }: Props) {
   };
 
   const changeProvider = (provider: AiProvider) => {
-    const preset = PROVIDER_OPTIONS.find((option) => option.value === provider)!;
+    const preset = getProviderOption(provider);
     setDraft((current) => ({
       ...current,
       provider,
+      protocol: preset.protocol,
       baseUrl: preset.baseUrl,
+      authType: preset.authType,
+      authHeader: undefined,
+      authPrefix: undefined,
+      modelListPath: preset.modelListPath,
       model: preset.model,
+      omitTemperature: preset.omitTemperature,
+      tokenParameter: preset.tokenParameter,
+      availableModels: undefined,
+      modelsFetchedAt: undefined,
+    }));
+  };
+
+  const changeProtocol = (protocol: AiProtocol) => {
+    const defaults = getProtocolDefaults(protocol);
+    setDraft((current) => ({
+      ...current,
+      protocol,
+      authType: defaults.authType,
+      authHeader: undefined,
+      authPrefix: undefined,
+      modelListPath: defaults.modelListPath,
+      tokenParameter: defaults.tokenParameter,
       availableModels: undefined,
       modelsFetchedAt: undefined,
     }));
@@ -140,6 +196,9 @@ export function AiSettingsDialog({ onClose }: Props) {
       ...draft,
       name: draft.name.trim(),
       baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
+      authHeader: draft.authType === "custom" ? draft.authHeader?.trim() : undefined,
+      authPrefix: draft.authType === "custom" ? draft.authPrefix : undefined,
+      modelListPath: draft.modelListPath.trim().replace(/^\/+/, ""),
       model: draft.model.trim(),
       availableModels: draft.availableModels?.length
         ? normalizeModelIds(draft.availableModels)
@@ -165,14 +224,16 @@ export function AiSettingsDialog({ onClose }: Props) {
     setStatus(null);
     try {
       validateEndpoint(draft);
+      validateRelativePath(draft.modelListPath);
+      validateCustomAuth(draft);
       const apiKey = secret.trim()
         ? secret.trim()
         : await readAiSecretForRequest(draft.credentialId);
-      const response = await listRuntimeModels({
-        provider: draft.provider,
+      const response = await listRuntimeModels(runtimeModelListConfigFromProfile({
+        ...draft,
         baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
-        apiKey,
-      });
+        modelListPath: draft.modelListPath.trim().replace(/^\/+/, ""),
+      }, apiKey));
       if (response.code !== "0000") throw new Error(response.info || "模型列表查询失败");
 
       const models = normalizeModelIds(response.data ?? []);
@@ -210,14 +271,7 @@ export function AiSettingsDialog({ onClose }: Props) {
     try {
       const profile = await persistDraft();
       const apiKey = await readAiSecretForRequest(profile.credentialId);
-      const response = await testRuntimeModel({
-        provider: profile.provider,
-        baseUrl: profile.baseUrl,
-        apiKey,
-        model: profile.model,
-        temperature: profile.temperature,
-        maxTokens: profile.maxTokens,
-      });
+      const response = await testRuntimeModel(runtimeModelConfigFromProfile(profile, apiKey));
       if (response.code !== "0000") throw new Error(response.info || "连接测试失败");
       setStatus({ kind: "success", text: "模型连接正常" });
     } catch (error) {
@@ -411,6 +465,99 @@ export function AiSettingsDialog({ onClose }: Props) {
                 />
               </label>
 
+              <details className="ai-advanced-settings">
+                <summary>
+                  <Settings2 size={13} />
+                  高级兼容配置
+                </summary>
+                <div className="ai-advanced-content">
+                  <div className="form-row">
+                    <label className="field">
+                      <span className="field-label">协议</span>
+                      <select
+                        className="select"
+                        value={draft.protocol}
+                        disabled={busy !== null || draft.provider !== "openai-compatible"}
+                        onChange={(event) => changeProtocol(event.target.value as AiProtocol)}
+                      >
+                        {PROTOCOL_OPTIONS.map((protocol) => (
+                          <option key={protocol.value} value={protocol.value}>{protocol.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span className="field-label">鉴权方式</span>
+                      <select
+                        className="select"
+                        value={draft.authType}
+                        disabled={
+                          busy !== null
+                          || draft.provider !== "openai-compatible"
+                          || draft.protocol !== "openai-chat"
+                        }
+                        onChange={(event) => setDraft((current) => ({
+                          ...current,
+                          authType: event.target.value as AiAuthType,
+                          authHeader: undefined,
+                          authPrefix: undefined,
+                        }))}
+                      >
+                        {AUTH_OPTIONS.map((auth) => (
+                          <option key={auth.value} value={auth.value}>{auth.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="field">
+                    <span className="field-label">模型列表路径</span>
+                    <input
+                      className="input"
+                      value={draft.modelListPath}
+                      disabled={busy !== null || draft.provider !== "openai-compatible"}
+                      placeholder="models"
+                      onChange={(event) => setDraft((current) => ({
+                        ...current,
+                        modelListPath: event.target.value,
+                        availableModels: undefined,
+                        modelsFetchedAt: undefined,
+                      }))}
+                    />
+                  </label>
+
+                  {draft.provider === "openai-compatible" && draft.authType === "custom" ? (
+                    <div className="form-row">
+                      <label className="field">
+                        <span className="field-label">Header 名称</span>
+                        <input
+                          className="input"
+                          value={draft.authHeader ?? ""}
+                          disabled={busy !== null}
+                          placeholder="X-API-Key"
+                          onChange={(event) => setDraft((current) => ({
+                            ...current,
+                            authHeader: event.target.value,
+                          }))}
+                        />
+                      </label>
+                      <label className="field">
+                        <span className="field-label">密钥前缀</span>
+                        <input
+                          className="input"
+                          value={draft.authPrefix ?? ""}
+                          disabled={busy !== null}
+                          placeholder="Bearer "
+                          onChange={(event) => setDraft((current) => ({
+                            ...current,
+                            authPrefix: event.target.value,
+                          }))}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              </details>
+
               <div className="ai-editor-section-title">密钥</div>
               <label className="field">
                 <span className="field-label ai-secret-label">
@@ -450,9 +597,39 @@ export function AiSettingsDialog({ onClose }: Props) {
               </label>
 
               <div className="ai-editor-section-title">生成参数</div>
+              <div className="form-row ai-generation-switches">
+                <label className="ai-checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={!draft.omitTemperature}
+                    disabled={busy !== null}
+                    onChange={(event) => setDraft((current) => ({
+                      ...current,
+                      omitTemperature: !event.target.checked,
+                    }))}
+                  />
+                  <span>发送 Temperature</span>
+                </label>
+                <label className="field">
+                  <span className="field-label">Token 参数</span>
+                  <select
+                    className="select"
+                    value={draft.tokenParameter}
+                    disabled={busy !== null || draft.protocol !== "openai-chat"}
+                    onChange={(event) => setDraft((current) => ({
+                      ...current,
+                      tokenParameter: event.target.value as AiTokenParameter,
+                    }))}
+                  >
+                    {TOKEN_PARAMETER_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <label className="field">
                 <span className="field-label ai-range-label">
-                  Temperature <span>{draft.temperature.toFixed(1)}</span>
+                  Temperature <span>{draft.omitTemperature ? "不发送" : draft.temperature.toFixed(1)}</span>
                 </span>
                 <input
                   className="ai-range"
@@ -461,6 +638,7 @@ export function AiSettingsDialog({ onClose }: Props) {
                   max="2"
                   step="0.1"
                   value={draft.temperature}
+                  disabled={busy !== null || draft.omitTemperature}
                   onChange={(event) => setDraft((current) => ({ ...current, temperature: Number(event.target.value) }))}
                 />
               </label>

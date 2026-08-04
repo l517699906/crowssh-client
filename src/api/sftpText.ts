@@ -1,4 +1,5 @@
 import { buildRequestUrl, type ApiResponse } from "./request";
+import { fetchWithDeviceAuthorization } from "./deviceIdentity";
 
 const BASE = "/api/v1/ssh/sftp/content";
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -36,7 +37,10 @@ async function requestDocument(url: string, init?: RequestInit) {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetchWithDeviceAuthorization(url, {
+      ...init,
+      signal: controller.signal,
+    });
     const text = await response.text();
     let result: ApiResponse<RemoteTextDocument> | null = null;
     try {

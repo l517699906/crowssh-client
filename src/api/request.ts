@@ -4,27 +4,16 @@
  * 所有环境固定直连部署服务端
  */
 
+import { fetchWithDeviceAuthorization, withDeviceAuthorization } from './deviceIdentity'
+import { buildRequestUrl } from './config'
+
+export { API_BASE_URL, buildRequestUrl } from './config'
+
 /** 后端统一响应结构 */
 export interface ApiResponse<T = unknown> {
     code: string
     info: string
     data: T | null
-}
-
-/** CrowSSH 服务端基础地址（Nginx 80 端口） */
-export const API_BASE_URL = "http://154.8.163.87";
-
-export function buildRequestUrl(
-    path: string,
-    params?: Record<string, string>,
-): string {
-    const url = new URL(`${API_BASE_URL}${path}`)
-    Object.entries(params ?? {}).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-            url.searchParams.set(key, value)
-        }
-    })
-    return url.toString()
 }
 
 /** 请求超时（毫秒） */
@@ -47,9 +36,12 @@ async function request<T>(
     const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
+        const headers = await withDeviceAuthorization(
+            body ? { 'Content-Type': 'application/json' } : undefined,
+        )
         const res = await fetch(url, {
             method,
-            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            headers,
             body: body ? JSON.stringify(body) : undefined,
             signal: controller.signal,
         })
@@ -86,7 +78,7 @@ export function postWithTimeout<T>(path: string, body: unknown, timeoutMs: numbe
 
 /** 发起不设短超时的流式 POST 请求，由调用方负责读取响应体和取消请求。 */
 export async function postStream(path: string, body: unknown, signal?: AbortSignal) {
-    const res = await fetch(buildRequestUrl(path), {
+    const res = await fetchWithDeviceAuthorization(buildRequestUrl(path), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -111,4 +103,13 @@ export function put<T>(path: string, body?: unknown, params?: Record<string, str
 /** DELETE 请求 */
 export function del<T>(path: string, params?: Record<string, string>) {
     return request<T>('DELETE', path, undefined, params)
+}
+
+/** DELETE 请求，允许递归删除等长耗时操作使用独立超时。 */
+export function delWithTimeout<T>(
+    path: string,
+    params: Record<string, string>,
+    timeoutMs: number,
+) {
+    return request<T>('DELETE', path, undefined, params, timeoutMs)
 }

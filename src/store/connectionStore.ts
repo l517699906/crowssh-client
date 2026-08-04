@@ -17,7 +17,7 @@ interface ConnectionStore {
     error: string | null
 
     // 获取连接列表
-    fetchConnections: (userId?: string) => Promise<void>
+    fetchConnections: () => Promise<void>
     // 创建连接
     createConnection: (payload: SshConnectionPayload) => Promise<boolean>
     // 更新连接
@@ -63,10 +63,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     loading: false,
     error: null,
 
-    fetchConnections: async (userId = 'default') => {
+    fetchConnections: async () => {
         set({ loading: true, error: null })
         try {
-            const res = await sshApi.getConnectionList(userId)
+            const res = await sshApi.getConnectionList()
             if (res.code === '0000' && res.data) {
                 const connections = res.data.map(dtoToConnection)
                 set({ connections, serverStatus: { ...get().serverStatus, connected: true } })

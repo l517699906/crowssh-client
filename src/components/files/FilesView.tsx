@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   ChevronRight,
-  Download,
   File,
   FileCode2,
   Folder,
@@ -33,6 +32,10 @@ import {
   EMPTY_WORKSPACE,
   useWorkspaceStore,
 } from "../../store/workspaceStore";
+import { FileContextMenu } from "./FileContextMenu";
+import { FileOperationDialog } from "./FileOperationDialog";
+import { useRemoteFileOperations } from "./useRemoteFileOperations";
+import type { RemoteFileAction } from "./fileOperations";
 import "./files.css";
 
 interface Props {
@@ -56,9 +59,35 @@ function parentPath(path: string) {
   return index <= 0 ? "/" : normalized.slice(0, index);
 }
 
+function modifiedDate(modifiedAt: number) {
+  if (!Number.isFinite(modifiedAt) || modifiedAt <= 0) return null;
+  const milliseconds = modifiedAt < 10_000_000_000 ? modifiedAt * 1_000 : modifiedAt;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const modifiedTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function formatModifiedTime(modifiedAt: number) {
+  const date = modifiedDate(modifiedAt);
+  return date ? modifiedTimeFormatter.format(date).replace(/\//g, "-") : "时间未知";
+}
+
 export function FilesView({ server, activeSessionId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    file: RemoteFile;
+    x: number;
+    y: number;
+  } | null>(null);
   const connectionId = server?.id;
   const workspace = useWorkspaceStore(
     useShallow((state) => {
@@ -67,6 +96,7 @@ export function FilesView({ server, activeSessionId }: Props) {
         : undefined;
       const value = current ?? EMPTY_WORKSPACE;
       return {
+        fileConnectionId: value.fileConnectionId,
         path: value.path,
         pathInput: value.pathInput,
         files: value.files,
@@ -76,15 +106,29 @@ export function FilesView({ server, activeSessionId }: Props) {
       };
     }),
   );
-  const { path, pathInput, files, loading, initialized, error } = workspace;
+  const {
+    fileConnectionId,
+    path,
+    pathInput,
+    files,
+    loading,
+    initialized,
+    error,
+  } = workspace;
+  const viewScopeKey = `${activeSessionId ?? ""}\0${connectionId ?? ""}`;
+  const viewScopeKeyRef = useRef(viewScopeKey);
+  viewScopeKeyRef.current = viewScopeKey;
 
   const loadDirectory = useCallback(
     async (nextPath?: string) => {
       if (!connectionId || !activeSessionId) return;
+      const requestScope = viewScopeKey;
+      if (viewScopeKeyRef.current !== requestScope) return;
       const store = useWorkspaceStore.getState();
-      const requestId = store.beginFileRequest(activeSessionId);
+      const requestId = store.beginFileRequest(activeSessionId, connectionId);
       try {
         const response = await listFiles(connectionId, nextPath);
+        if (viewScopeKeyRef.current !== requestScope) return;
         const current = useWorkspaceStore.getState().workspaces[activeSessionId];
         if (!current || current.requestId !== requestId) return;
         if (response.code !== "0000" || !response.data) {
@@ -104,6 +148,7 @@ export function FilesView({ server, activeSessionId }: Props) {
           fileScrollTop: keepScrollPosition ? current.fileScrollTop : 0,
         });
       } catch (reason) {
+        if (viewScopeKeyRef.current !== requestScope) return;
         const current = useWorkspaceStore.getState().workspaces[activeSessionId];
         if (!current || current.requestId !== requestId) return;
         useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
@@ -112,12 +157,16 @@ export function FilesView({ server, activeSessionId }: Props) {
         });
       }
     },
-    [activeSessionId, connectionId],
+    [activeSessionId, connectionId, viewScopeKey],
   );
 
   useEffect(() => {
-    if (connectionId && activeSessionId && !initialized) void loadDirectory();
-  }, [activeSessionId, connectionId, initialized, loadDirectory]);
+    if (connectionId
+        && activeSessionId
+        && (!initialized || fileConnectionId !== connectionId)) {
+      void loadDirectory();
+    }
+  }, [activeSessionId, connectionId, fileConnectionId, initialized, loadDirectory]);
 
   useEffect(() => {
     if (!activeSessionId || !fileListRef.current) return;
@@ -166,14 +215,16 @@ export function FilesView({ server, activeSessionId }: Props) {
       () => {
         const currentWorkspace =
           useWorkspaceStore.getState().workspaces[activeSessionId];
-        if (!currentWorkspace || currentWorkspace.path !== path) return;
+        if (!currentWorkspace
+            || currentWorkspace.fileConnectionId !== server.id
+            || currentWorkspace.path !== path) return;
         void loadDirectory(path);
       },
     );
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const handleDownload = (file: RemoteFile) => {
+  const handleDownload = useCallback((file: RemoteFile) => {
     if (!server || !activeSessionId) return;
     useWorkspaceStore.getState().updateWorkspace(activeSessionId, { error: null });
     enqueueDownloads(
@@ -184,10 +235,11 @@ export function FilesView({ server, activeSessionId }: Props) {
       },
       [file],
     );
-  };
+  }, [activeSessionId, server]);
 
-  const handleOpenTextFile = async (file: RemoteFile) => {
+  const handleOpenTextFile = useCallback(async (file: RemoteFile) => {
     if (!server || !activeSessionId) return;
+    const editorScope = `${activeSessionId}\0${server.id}\0${path}`;
     const reason = remoteTextOpenError(file);
     if (reason) {
       useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
@@ -205,11 +257,47 @@ export function FilesView({ server, activeSessionId }: Props) {
         serverName: server.name || `${server.username}@${server.host}`,
       });
     } catch (reason) {
+      const current = useWorkspaceStore.getState().workspaces[activeSessionId];
+      const currentScope = current
+        ? `${activeSessionId}\0${current.fileConnectionId ?? ""}\0${current.path}`
+        : "";
+      if (currentScope !== editorScope || viewScopeKeyRef.current !== viewScopeKey) return;
       useWorkspaceStore.getState().updateWorkspace(activeSessionId, {
         error: reason instanceof Error ? reason.message : String(reason),
       });
     }
-  };
+  }, [activeSessionId, path, server, viewScopeKey]);
+
+  const setOperationError = useCallback((message: string | null) => {
+    if (!activeSessionId) return;
+    useWorkspaceStore.getState().updateWorkspace(activeSessionId, { error: message });
+  }, [activeSessionId]);
+
+  const refreshCurrentDirectory = useCallback(
+    () => loadDirectory(path),
+    [loadDirectory, path],
+  );
+
+  const fileOperations = useRemoteFileOperations({
+    scopeId: activeSessionId,
+    connectionId,
+    currentPath: path,
+    onRefresh: refreshCurrentDirectory,
+    onDownload: handleDownload,
+    onEdit: handleOpenTextFile,
+    onError: setOperationError,
+  });
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const handleContextAction = useCallback((action: RemoteFileAction) => {
+    const file = contextMenu?.file;
+    setContextMenu(null);
+    if (file) void fileOperations.openAction(file, action);
+  }, [contextMenu, fileOperations.openAction]);
+
+  useEffect(() => {
+    setContextMenu(null);
+  }, [activeSessionId, connectionId, path]);
 
   return (
     <>
@@ -298,6 +386,9 @@ export function FilesView({ server, activeSessionId }: Props) {
           </div>
 
           {error && <div className="file-error" role="alert">{error}</div>}
+          {fileOperations.notice && (
+            <div className="file-notice" role="status">{fileOperations.notice}</div>
+          )}
 
           {loading && files.length === 0 ? (
             <div className="empty-state">
@@ -313,6 +404,7 @@ export function FilesView({ server, activeSessionId }: Props) {
             <div
               ref={fileListRef}
               className="file-list"
+              role="list"
               aria-busy={loading}
               onScroll={(event) => {
                 if (!activeSessionId) return;
@@ -321,53 +413,87 @@ export function FilesView({ server, activeSessionId }: Props) {
                   .setFileScrollTop(activeSessionId, event.currentTarget.scrollTop);
               }}
             >
-              {files.map((file) => (
-                <div
-                  key={file.path}
-                  className={`file-item${file.directory ? " directory" : ""}${isRemoteTextFile(file) ? " editable" : ""}`}
-                  title={isRemoteTextFile(file) ? `${file.path}\n双击在新窗口编辑` : file.path}
-                  onDoubleClick={() => {
-                    if (file.directory) void loadDirectory(file.path);
-                    else void handleOpenTextFile(file);
-                  }}
-                >
-                  {file.directory ? (
-                    <Folder size={16} />
-                  ) : isRemoteTextFile(file) ? (
-                    <FileCode2 size={16} />
-                  ) : (
-                    <File size={16} />
-                  )}
-                  <div className="file-info">
-                    <div className="file-name">{file.name}</div>
-                    {!file.directory && (
-                      <div className="file-size">{formatSize(file.size)}</div>
+              {files.map((file) => {
+                const editable = isRemoteTextFile(file);
+                const date = modifiedDate(file.modifiedAt);
+                const formattedModifiedTime = formatModifiedTime(file.modifiedAt);
+                const openEntry = () => {
+                  if (file.directory) void loadDirectory(file.path);
+                  else if (editable) void handleOpenTextFile(file);
+                };
+                return (
+                  <div
+                    key={file.path}
+                    className={`file-item${file.directory ? " directory" : ""}${editable ? " editable" : ""}${contextMenu?.file.path === file.path || fileOperations.dialog?.file.path === file.path ? " context-target" : ""}`}
+                    role="listitem"
+                    tabIndex={0}
+                    aria-haspopup="menu"
+                    title={file.directory ? `${file.path}\n双击打开目录` : editable ? `${file.path}\n双击在新窗口编辑` : file.path}
+                    onDoubleClick={openEntry}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setContextMenu({ file, x: event.clientX, y: event.clientY });
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        openEntry();
+                      } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                        event.preventDefault();
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setContextMenu({ file, x: bounds.left + 28, y: bounds.top + 24 });
+                      }
+                    }}
+                  >
+                    {file.directory ? (
+                      <Folder size={16} />
+                    ) : editable ? (
+                      <FileCode2 size={16} />
+                    ) : (
+                      <File size={16} />
                     )}
+                    <div className="file-info">
+                      <div className="file-name">{file.name}</div>
+                      <div className="file-meta">
+                        <span>{file.directory ? "文件夹" : formatSize(file.size)}</span>
+                        <time
+                          className="file-modified"
+                          dateTime={date?.toISOString()}
+                          title={`最近修改：${formattedModifiedTime}`}
+                        >
+                          {formattedModifiedTime}
+                        </time>
+                      </div>
+                    </div>
                   </div>
-                  {file.directory ? (
-                    <button
-                      className="file-row-action"
-                      type="button"
-                      title="打开目录"
-                      onClick={() => void loadDirectory(file.path)}
-                    >
-                      <ChevronRight size={14} />
-                    </button>
-                  ) : (
-                    <button
-                      className="file-row-action"
-                      type="button"
-                      title={`下载 ${file.name}`}
-                      onClick={() => handleDownload(file)}
-                    >
-                      <Download size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
+      )}
+
+      {contextMenu && (
+        <FileContextMenu
+          file={contextMenu.file}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onAction={handleContextAction}
+          onClose={closeContextMenu}
+        />
+      )}
+
+      {fileOperations.dialog && (
+        <FileOperationDialog
+          key={`${fileOperations.dialog.action}:${fileOperations.dialog.file.path}`}
+          action={fileOperations.dialog.action}
+          file={fileOperations.dialog.file}
+          basePath={fileOperations.dialog.basePath}
+          busy={fileOperations.busy}
+          error={fileOperations.dialogError}
+          onClose={fileOperations.closeDialog}
+          onSubmit={(value) => void fileOperations.submitDialog(value)}
+        />
       )}
     </>
   );

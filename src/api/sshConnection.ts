@@ -15,7 +15,6 @@ export interface SshConnectionDTO {
     authType: number     // 1-密码, 2-私钥
     status: number       // 0-未连接, 1-已连接, 2-连接中, 3-连接失败
     encrypted: number
-    userId: string
     createdAt: string
     updatedAt: string
     connectTimeout?: number
@@ -35,7 +34,6 @@ export interface SshConnectionPayload {
     authType: number
     password?: string
     privateKey?: string
-    userId?: string
     connectTimeout?: number
     keepaliveInterval?: number
     startupCommand?: string
@@ -68,8 +66,8 @@ export function getConnection(connectionId: string) {
 }
 
 /** 查询连接列表 */
-export function getConnectionList(userId = 'default') {
-    return get<SshConnectionDTO[]>(`${BASE}/connection_list`, { userId })
+export function getConnectionList() {
+    return get<SshConnectionDTO[]>(`${BASE}/connection_list`)
 }
 
 /** 使用服务端实际网络环境测试 SSH 连接，不保存连接 */

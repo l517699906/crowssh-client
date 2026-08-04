@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { RemoteFile } from "../api/sftp";
 
 export interface WorkspaceState {
+  fileConnectionId: string | null;
   path: string;
   pathInput: string;
   files: RemoteFile[];
@@ -14,6 +15,7 @@ export interface WorkspaceState {
 }
 
 const createWorkspace = (): WorkspaceState => ({
+  fileConnectionId: null,
   path: "",
   pathInput: "",
   files: [],
@@ -29,7 +31,7 @@ export const EMPTY_WORKSPACE = createWorkspace();
 
 interface WorkspaceStore {
   workspaces: Record<string, WorkspaceState>;
-  beginFileRequest: (sessionId: string) => number;
+  beginFileRequest: (sessionId: string, connectionId: string) => number;
   updateWorkspace: (
     sessionId: string,
     patch: Partial<WorkspaceState>,
@@ -41,14 +43,20 @@ interface WorkspaceStore {
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspaces: {},
-  beginFileRequest: (sessionId) => {
+  beginFileRequest: (sessionId, connectionId) => {
     const current = get().workspaces[sessionId] ?? createWorkspace();
     const requestId = current.requestId + 1;
+    const connectionChanged = current.fileConnectionId !== connectionId;
     set((state) => ({
       workspaces: {
         ...state.workspaces,
         [sessionId]: {
           ...current,
+          fileConnectionId: connectionId,
+          path: connectionChanged ? "" : current.path,
+          pathInput: connectionChanged ? "" : current.pathInput,
+          files: connectionChanged ? [] : current.files,
+          fileScrollTop: connectionChanged ? 0 : current.fileScrollTop,
           requestId,
           loading: true,
           initialized: true,
