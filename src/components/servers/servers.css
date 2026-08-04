@@ -17,6 +17,9 @@
 .server-item:hover {
   background-color: var(--bg-hover);
 }
+.server-item.selected {
+  background-color: var(--bg-selected-soft);
+}
 .server-item-icon {
   color: var(--accent);
   flex-shrink: 0;
@@ -65,7 +68,8 @@
   border-radius: var(--r-sm);
   background-color: color-mix(in srgb, var(--danger) 9%, transparent);
 }
-.server-item:hover .server-actions {
+.server-item:hover .server-actions,
+.server-item.selected .server-actions {
   display: flex;
 }
 

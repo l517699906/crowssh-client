@@ -38,12 +38,13 @@ async function request<T>(
     path: string,
     body?: unknown,
     params?: Record<string, string>,
+    timeoutMs = TIMEOUT_MS,
 ): Promise<ApiResponse<T>> {
     // 拼接 query string
     const url = buildRequestUrl(path, params)
 
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
 
     try {
         const res = await fetch(url, {
@@ -76,6 +77,11 @@ export function get<T>(path: string, params?: Record<string, string>) {
 /** POST 请求（JSON body + 可选 query params） */
 export function post<T>(path: string, body?: unknown, params?: Record<string, string>) {
     return request<T>('POST', path, body, params)
+}
+
+/** POST 请求，允许调用方为长耗时操作指定独立超时。 */
+export function postWithTimeout<T>(path: string, body: unknown, timeoutMs: number) {
+    return request<T>('POST', path, body, undefined, timeoutMs)
 }
 
 /** 发起不设短超时的流式 POST 请求，由调用方负责读取响应体和取消请求。 */

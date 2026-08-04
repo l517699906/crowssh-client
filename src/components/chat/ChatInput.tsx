@@ -38,7 +38,7 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       send();
     }
@@ -51,7 +51,7 @@ export function ChatInput({
           ref={taRef}
           className="chat-textarea"
           value={text}
-          placeholder="输入消息，Enter 发送 / Shift+Enter 换行"
+          placeholder="输入消息，Ctrl/Command+Enter 发送"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
         />
@@ -87,7 +87,7 @@ export function ChatInput({
             className="chat-send-btn"
             onClick={sending ? onStop : send}
             disabled={!sending && (sendDisabled || !text.trim())}
-            title={sending ? "停止" : "发送 (Enter)"}
+            title={sending ? "停止" : "发送"}
           >
             {sending ? <Square size={15} fill="currentColor" /> : <Send size={17} />}
           </button>

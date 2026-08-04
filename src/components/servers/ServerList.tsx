@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Pencil, Server, Trash2 } from "lucide-react";
 import type { ServerConfig } from "../../types";
 
@@ -9,14 +10,17 @@ interface Props {
 }
 
 export function ServerList({ servers, onConnect, onEdit, onRemove }: Props) {
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+
   return (
     <div className="server-list">
       {servers.map((s) => (
         <div
           key={s.id}
-          className="server-item"
-          onClick={() => onConnect(s)}
-          title="点击连接"
+          className={`server-item${selectedServerId === s.id ? " selected" : ""}`}
+          onClick={() => setSelectedServerId(s.id)}
+          onDoubleClick={() => onConnect(s)}
+          title="双击连接"
         >
           <Server size={16} className="server-item-icon" />
           <div className="server-info">
@@ -25,7 +29,10 @@ export function ServerList({ servers, onConnect, onEdit, onRemove }: Props) {
               {s.username}@{s.host}:{s.port}
             </div>
           </div>
-          <div className="server-actions">
+          <div
+            className="server-actions"
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
             <button
               className="icon-btn"
               title="编辑"

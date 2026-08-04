@@ -1,7 +1,7 @@
 /**
  * SSH 连接管理 API
  */
-import { get, post } from './request'
+import { get, post, postWithTimeout } from './request'
 
 // ===== 类型定义 =====
 
@@ -18,6 +18,11 @@ export interface SshConnectionDTO {
     userId: string
     createdAt: string
     updatedAt: string
+    connectTimeout?: number
+    keepaliveInterval?: number
+    startupCommand?: string
+    compression?: boolean
+    strictHostKeyCheck?: boolean
 }
 
 /** 创建/更新连接请求体 */
@@ -65,6 +70,12 @@ export function getConnection(connectionId: string) {
 /** 查询连接列表 */
 export function getConnectionList(userId = 'default') {
     return get<SshConnectionDTO[]>(`${BASE}/connection_list`, { userId })
+}
+
+/** 使用服务端实际网络环境测试 SSH 连接，不保存连接 */
+export function testConnection(payload: SshConnectionPayload) {
+    const connectTimeoutMs = Math.max(1, payload.connectTimeout ?? 30) * 1000
+    return postWithTimeout<void>(`${BASE}/test_connection`, payload, connectTimeoutMs + 5000)
 }
 
 /** 建立 SSH 连接 */

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import {
   Eye,
   EyeOff,
@@ -9,7 +8,8 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import type { AuthArg, AuthType, ServerConfig } from "../../types";
+import * as sshApi from "../../api/sshConnection";
+import type { AuthType, ServerConfig } from "../../types";
 
 interface Props {
   initial?: ServerConfig;
@@ -53,11 +53,6 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
         ? Boolean(password)
         : Boolean(privateKey.trim());
   const canSave = Boolean(host.trim() && username.trim() && validPort && hasRequiredCredential);
-
-  const buildAuth = (): AuthArg =>
-    authType === "password"
-      ? { type: "password", password }
-      : { type: "key", privateKey, passphrase: passphrase || undefined };
 
   const hasTestCredential = authType === "password" ? Boolean(password) : Boolean(privateKey.trim());
 
@@ -111,16 +106,25 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
     setTestResult(null);
     setTesting(true);
     try {
-      await invoke("ssh_test_connection", {
+      const response = await sshApi.testConnection({
+        connectionName: name.trim() || host.trim(),
         host: host.trim(),
         port: Number(port),
         username: username.trim(),
-        auth: buildAuth(),
-        connectionTimeout,
+        authType: authType === "key" ? 2 : 1,
+        password: authType === "password" ? password : undefined,
+        privateKey: authType === "key" ? privateKey : undefined,
+        connectTimeout: connectionTimeout,
+        keepaliveInterval: keepAliveInterval,
         compression,
+        startupCommand: startupCommand.trim() || undefined,
         strictHostKeyCheck,
       });
-      setTestResult({ success: true, message: "连接和认证均成功" });
+      if (response.code !== "0000") {
+        setTestResult({ success: false, message: response.info || "连接测试失败" });
+        return;
+      }
+      setTestResult({ success: true, message: response.info || "连接和认证均成功" });
     } catch (reason) {
       setTestResult({
         success: false,

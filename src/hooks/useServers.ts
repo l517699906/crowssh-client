@@ -29,6 +29,7 @@ function toServerConfig(
   options: ConnectionOptionsMap,
 ): ServerConfig {
   const local = credentials[dto.connectionId];
+  const legacyOptions = options[dto.connectionId];
   return {
     id: dto.connectionId,
     name: dto.connectionName,
@@ -40,8 +41,16 @@ function toServerConfig(
     privateKey: local?.privateKey,
     passphrase: local?.passphrase,
     savePassword: Boolean(local),
-    ...DEFAULT_CONNECTION_OPTIONS,
-    ...options[dto.connectionId],
+    connectionTimeout:
+      dto.connectTimeout ?? legacyOptions?.connectionTimeout ?? DEFAULT_CONNECTION_OPTIONS.connectionTimeout,
+    keepAliveInterval:
+      dto.keepaliveInterval ?? legacyOptions?.keepAliveInterval ?? DEFAULT_CONNECTION_OPTIONS.keepAliveInterval,
+    compression: dto.compression ?? legacyOptions?.compression ?? DEFAULT_CONNECTION_OPTIONS.compression,
+    startupCommand: dto.startupCommand ?? legacyOptions?.startupCommand,
+    strictHostKeyCheck:
+      dto.strictHostKeyCheck
+      ?? legacyOptions?.strictHostKeyCheck
+      ?? DEFAULT_CONNECTION_OPTIONS.strictHostKeyCheck,
   };
 }
 
@@ -124,23 +133,6 @@ export function useServers() {
     await deleteSshCredentials(connectionId);
   }, []);
 
-  const rememberOptions = useCallback(
-    (connectionId: string, config: ServerConfig | Omit<ServerConfig, "id">) => {
-      optionsRef.current = {
-        ...optionsRef.current,
-        [connectionId]: {
-          connectionTimeout: config.connectionTimeout,
-          keepAliveInterval: config.keepAliveInterval,
-          compression: config.compression,
-          startupCommand: config.startupCommand,
-          strictHostKeyCheck: config.strictHostKeyCheck,
-        },
-      };
-      save(OPTIONS_KEY, optionsRef.current);
-    },
-    [],
-  );
-
   const forgetOptions = useCallback((connectionId: string) => {
     const { [connectionId]: _, ...next } = optionsRef.current;
     optionsRef.current = next;
@@ -198,12 +190,11 @@ export function useServers() {
       } catch {
         setError("服务器已创建，但凭据无法保存到系统钥匙串");
       }
-      rememberOptions(response.data.connectionId, config);
       const server = toServerConfig(response.data, credentialsRef.current, optionsRef.current);
       setServers((current) => [server, ...current]);
       return true;
     },
-    [rememberCredentials, rememberOptions, userId],
+    [rememberCredentials, userId],
   );
 
   const updateServer = useCallback(
@@ -220,12 +211,11 @@ export function useServers() {
       } catch {
         setError("服务器已更新，但凭据无法保存到系统钥匙串");
       }
-      rememberOptions(config.id, config);
       const server = toServerConfig(response.data, credentialsRef.current, optionsRef.current);
       setServers((current) => current.map((item) => (item.id === config.id ? server : item)));
       return true;
     },
-    [rememberCredentials, rememberOptions, userId],
+    [rememberCredentials, userId],
   );
 
   const removeServer = useCallback(
