@@ -52,6 +52,9 @@ export function ChatInput({
           className="chat-textarea"
           value={text}
           placeholder="输入消息，Ctrl/Command+Enter 发送"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
         />
