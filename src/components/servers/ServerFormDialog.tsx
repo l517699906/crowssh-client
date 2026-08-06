@@ -369,16 +369,21 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
             </div>
           )}
 
-          {testResult && (
-            <div
-              className={`form-test-result ${testResult.success ? "success" : "error"}`}
-              role="status"
-            >
-              {testResult.message}
-            </div>
-          )}
-          {error && <div className="form-error" role="alert">{error}</div>}
         </div>
+
+        {(testResult || error) && (
+          <div className="server-form-feedback">
+            {testResult && (
+              <div
+                className={`form-test-result ${testResult.success ? "success" : "error"}`}
+                role={testResult.success ? "status" : "alert"}
+              >
+                {testResult.message}
+              </div>
+            )}
+            {error && <div className="form-error" role="alert">{error}</div>}
+          </div>
+        )}
 
         <div className="modal-footer">
           <button className="btn" onClick={onClose} disabled={saving || testing}>

@@ -6,6 +6,7 @@ export type AiProvider =
   | "openrouter"
   | "groq"
   | "dashscope"
+  | "packy"
   | "openai-compatible";
 
 export type AiProtocol = "openai-chat" | "anthropic-messages" | "gemini-native";
@@ -13,6 +14,8 @@ export type AiProtocol = "openai-chat" | "anthropic-messages" | "gemini-native";
 export type AiAuthType = "bearer" | "x-api-key" | "api-key" | "custom";
 
 export type AiTokenParameter = "auto" | "max_tokens" | "max_completion_tokens";
+
+export type RuntimeAiProvider = Exclude<AiProvider, "packy">;
 
 export interface AiProfile {
   id: string;
@@ -36,7 +39,7 @@ export interface AiProfile {
 }
 
 export interface RuntimeModelConfig {
-  provider: AiProvider;
+  provider: RuntimeAiProvider;
   protocol: AiProtocol;
   baseUrl: string;
   apiKey: string;
@@ -73,10 +76,28 @@ export interface AiProviderOption {
   modelListPath: string;
   tokenParameter: AiTokenParameter;
   omitTemperature: boolean;
+  maxTokens?: number;
 }
 
 const MAX_MODEL_COUNT = 500;
 const MAX_MODEL_ID_LENGTH = 200;
+
+export function normalizeAiBaseUrl(provider: AiProvider, baseUrl: string): string {
+  const value = baseUrl.trim().replace(/\/+$/, "");
+  if (provider !== "packy") return value;
+
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || url.search || url.hash) return value;
+    let path = url.pathname.replace(/\/+$/, "");
+    path = path
+      .replace(/\/v1\/(?:chat\/completions|messages)$/i, "")
+      .replace(/\/v1$/i, "");
+    return `${url.origin}${path}`;
+  } catch {
+    return value;
+  }
+}
 
 export function normalizeModelIds(models: readonly unknown[]): string[] {
   const unique = new Set<string>();
@@ -131,6 +152,19 @@ export const PROVIDER_OPTIONS: AiProviderOption[] = [
     modelListPath: "v1/models",
     tokenParameter: "auto",
     omitTemperature: false,
+    maxTokens: 4096,
+  },
+  {
+    value: "packy",
+    label: "PackyAPI Claude",
+    baseUrl: "https://www.packyapi.ai",
+    model: "claude-sonnet-4-6",
+    protocol: "anthropic-messages",
+    authType: "x-api-key",
+    modelListPath: "v1/models",
+    tokenParameter: "auto",
+    omitTemperature: true,
+    maxTokens: 4096,
   },
   {
     value: "gemini",
@@ -234,9 +268,9 @@ export function runtimeModelConfigFromProfile(
   model = profile.model,
 ): RuntimeModelConfig {
   return {
-    provider: profile.provider,
+    provider: profile.provider === "packy" ? "openai-compatible" : profile.provider,
     protocol: profile.protocol,
-    baseUrl: profile.baseUrl,
+    baseUrl: normalizeAiBaseUrl(profile.provider, profile.baseUrl),
     apiKey,
     authType: profile.authType,
     authHeader: profile.authHeader,

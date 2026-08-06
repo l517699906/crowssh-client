@@ -253,12 +253,22 @@
   accent-color: var(--accent);
 }
 
+.ai-editor-feedback {
+  flex: 0 0 auto;
+  max-height: 96px;
+  padding: 8px 14px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-subtle);
+}
+
 .ai-settings-status {
   min-height: 24px;
   padding: 5px 8px;
   border-left: 2px solid currentColor;
   background-color: var(--bg-terminal);
   font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .ai-settings-status.success {

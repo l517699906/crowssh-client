@@ -234,9 +234,26 @@
   transform: translateY(-50%);
 }
 
-.form-test-result {
-  margin-top: 12px;
+.server-form-feedback {
+  flex: 0 0 auto;
+  max-height: 96px;
+  display: grid;
+  gap: 6px;
+  padding: 8px 16px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.form-test-result,
+.server-form-feedback .form-error {
+  min-height: 28px;
+  margin: 0;
+  padding: 6px 9px;
+  border-left: 2px solid currentColor;
+  background-color: var(--bg-terminal);
   font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .form-test-result.success {

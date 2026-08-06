@@ -3,6 +3,7 @@ import { load, save, uid } from "../lib/storage";
 import {
   getProtocolDefaults,
   getProviderOption,
+  normalizeAiBaseUrl,
   normalizeModelIds,
   type AiAuthType,
   type AiProfile,
@@ -41,6 +42,7 @@ const PROVIDERS = new Set<AiProvider>([
   "openrouter",
   "groq",
   "dashscope",
+  "packy",
   "openai-compatible",
 ]);
 const PROTOCOLS = new Set<AiProtocol>(["openai-chat", "anthropic-messages", "gemini-native"]);
@@ -74,6 +76,18 @@ function migrateLegacyBaseUrl(baseUrl: string): string {
   return `${value}/v1`;
 }
 
+function isPackyHost(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "packyapi.ai"
+      || host.endsWith(".packyapi.ai")
+      || host === "packyapi.com"
+      || host.endsWith(".packyapi.com");
+  } catch {
+    return false;
+  }
+}
+
 function normalizeProfile(value: unknown, legacy: boolean): AiProfile | null {
   const profile = asRecord(value);
   if (!profile) return null;
@@ -85,9 +99,12 @@ function normalizeProfile(value: unknown, legacy: boolean): AiProfile | null {
   const model = optionalText(profile.model, 200);
   if (!id || !credentialId || !name || !rawBaseUrl || !model) return null;
 
-  const provider = PROVIDERS.has(profile.provider as AiProvider)
+  const storedProvider = PROVIDERS.has(profile.provider as AiProvider)
     ? profile.provider as AiProvider
     : "openai-compatible";
+  const migratePackyClaude = /^claude(?:[-_]|$)/i.test(model)
+    && isPackyHost(rawBaseUrl);
+  const provider: AiProvider = migratePackyClaude ? "packy" : storedProvider;
   const preset = getProviderOption(provider);
   const configurable = provider === "openai-compatible";
   const storedProtocol = PROTOCOLS.has(profile.protocol as AiProtocol)
@@ -112,11 +129,12 @@ function normalizeProfile(value: unknown, legacy: boolean): AiProfile | null {
     ? Math.min(2, Math.max(0, profile.temperature))
     : 0.2;
   const storedMaxTokens = profile.maxTokens;
-  const maxTokens = typeof storedMaxTokens === "number"
+  const storedNormalizedMaxTokens = typeof storedMaxTokens === "number"
     && Number.isInteger(storedMaxTokens)
     && storedMaxTokens > 0
     ? Math.min(131072, storedMaxTokens)
     : undefined;
+  const maxTokens = storedNormalizedMaxTokens ?? preset.maxTokens;
   const availableModels = normalizeModelIds(
     Array.isArray(profile.availableModels) ? profile.availableModels : [],
   );
@@ -132,16 +150,22 @@ function normalizeProfile(value: unknown, legacy: boolean): AiProfile | null {
     name,
     provider,
     protocol,
-    baseUrl: legacy ? migrateLegacyBaseUrl(rawBaseUrl) : rawBaseUrl,
+    baseUrl: provider === "packy"
+      ? normalizeAiBaseUrl(provider, rawBaseUrl)
+      : legacy ? migrateLegacyBaseUrl(rawBaseUrl) : rawBaseUrl,
     authType,
     authHeader: authType === "custom" ? optionalText(profile.authHeader, 100) : undefined,
     authPrefix: authType === "custom" ? optionalPrefix(profile.authPrefix, 100) : undefined,
-    modelListPath: optionalText(profile.modelListPath, 500) ?? protocolDefaults.modelListPath,
+    modelListPath: provider === "packy"
+      ? preset.modelListPath
+      : optionalText(profile.modelListPath, 500) ?? protocolDefaults.modelListPath,
     model,
     temperature,
-    omitTemperature: typeof profile.omitTemperature === "boolean"
-      ? profile.omitTemperature
-      : preset.omitTemperature,
+    omitTemperature: provider === "packy"
+      ? preset.omitTemperature
+      : typeof profile.omitTemperature === "boolean"
+        ? profile.omitTemperature
+        : preset.omitTemperature,
     tokenParameter,
     maxTokens,
     keyLastFour: typeof profile.keyLastFour === "string"
@@ -200,6 +224,7 @@ function newProfile(): AiProfile {
     temperature: 0.2,
     omitTemperature: preset.omitTemperature,
     tokenParameter: preset.tokenParameter,
+    maxTokens: preset.maxTokens,
   };
 }
 

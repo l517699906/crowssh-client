@@ -26,6 +26,7 @@ import {
   AUTH_OPTIONS,
   getProtocolDefaults,
   getProviderOption,
+  normalizeAiBaseUrl,
   normalizeModelIds,
   PROVIDER_OPTIONS,
   PROTOCOL_OPTIONS,
@@ -168,6 +169,7 @@ export function AiSettingsDialog({ onClose }: Props) {
       model: preset.model,
       omitTemperature: preset.omitTemperature,
       tokenParameter: preset.tokenParameter,
+      maxTokens: preset.maxTokens,
       availableModels: undefined,
       modelsFetchedAt: undefined,
     }));
@@ -195,7 +197,7 @@ export function AiSettingsDialog({ onClose }: Props) {
     let nextProfile: AiProfile = {
       ...draft,
       name: draft.name.trim(),
-      baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
+      baseUrl: normalizeAiBaseUrl(draft.provider, draft.baseUrl),
       authHeader: draft.authType === "custom" ? draft.authHeader?.trim() : undefined,
       authPrefix: draft.authType === "custom" ? draft.authPrefix : undefined,
       modelListPath: draft.modelListPath.trim().replace(/^\/+/, ""),
@@ -231,7 +233,7 @@ export function AiSettingsDialog({ onClose }: Props) {
         : await readAiSecretForRequest(draft.credentialId);
       const response = await listRuntimeModels(runtimeModelListConfigFromProfile({
         ...draft,
-        baseUrl: draft.baseUrl.trim().replace(/\/+$/, ""),
+        baseUrl: normalizeAiBaseUrl(draft.provider, draft.baseUrl),
         modelListPath: draft.modelListPath.trim().replace(/^\/+/, ""),
       }, apiKey));
       if (response.code !== "0000") throw new Error(response.info || "模型列表查询失败");
@@ -273,7 +275,7 @@ export function AiSettingsDialog({ onClose }: Props) {
       const apiKey = await readAiSecretForRequest(profile.credentialId);
       const response = await testRuntimeModel(runtimeModelConfigFromProfile(profile, apiKey));
       if (response.code !== "0000") throw new Error(response.info || "连接测试失败");
-      setStatus({ kind: "success", text: "模型连接正常" });
+      setStatus({ kind: "success", text: response.info || "模型连接及工具结果往返正常" });
     } catch (error) {
       setStatus({ kind: "error", text: error instanceof Error ? error.message : "连接测试失败" });
     } finally {
@@ -649,7 +651,7 @@ export function AiSettingsDialog({ onClose }: Props) {
                   type="number"
                   min="1"
                   max="131072"
-                  placeholder="使用模型默认值"
+                  placeholder="使用协议默认值"
                   value={draft.maxTokens ?? ""}
                   onChange={(event) => setDraft((current) => ({
                     ...current,
@@ -657,9 +659,18 @@ export function AiSettingsDialog({ onClose }: Props) {
                   }))}
                 />
               </label>
-
-              {status ? <div className={`ai-settings-status ${status.kind}`} role="status">{status.text}</div> : null}
             </div>
+
+            {status ? (
+              <div className="ai-editor-feedback">
+                <div
+                  className={`ai-settings-status ${status.kind}`}
+                  role={status.kind === "error" ? "alert" : "status"}
+                >
+                  {status.text}
+                </div>
+              </div>
+            ) : null}
 
             <div className="ai-editor-footer">
               {!isNew ? (
