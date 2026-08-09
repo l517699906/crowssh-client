@@ -20,7 +20,14 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost https: wss:; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'",
+      "devCsp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: wss:; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [],
+      "pubkey": ""
     }
   },
   "bundle": {

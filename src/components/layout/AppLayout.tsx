@@ -42,12 +42,13 @@ export function AppLayout({ servers, terminals }: Props) {
     <div className="app-layout">
       <Header terminals={terminals} onAddServer={() => setDialog({ mode: "add" })} />
 
-      <div className="workbench">
+      <div className="workbench" data-active-pane={layout.activePane}>
         <ActivityBar />
 
         {layout.leftVisible && (
           <>
             <div
+              className="layout-pane layout-pane-left"
               style={{ width: layout.leftWidth, flexShrink: 0, display: "flex" }}
             >
               <LeftSidebar
@@ -68,7 +69,8 @@ export function AppLayout({ servers, terminals }: Props) {
         )}
 
         <main
-          className="terminal-region island"
+          className="terminal-region island layout-pane layout-pane-terminal"
+          data-visible={layout.terminalVisible}
           style={{ display: layout.terminalVisible ? "flex" : "none" }}
         >
           <TerminalPanel
@@ -85,6 +87,7 @@ export function AppLayout({ servers, terminals }: Props) {
               onResize={(dx) => layout.setRightWidth(layout.rightWidth - dx)}
             />
             <div
+              className="layout-pane layout-pane-right"
               style={{ width: layout.rightWidth, flexShrink: 0, display: "flex" }}
             >
               <RightSidebar terminal={activeTerminal} server={activeServer} />

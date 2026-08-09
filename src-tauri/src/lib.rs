@@ -3,10 +3,21 @@ mod device_identity;
 mod ssh;
 mod ssh_secrets;
 
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            Ok(())
+        })
         .manage(ssh::AppState::default())
         .invoke_handler(tauri::generate_handler![
             ai_secrets::ai_secret_save,
@@ -23,7 +34,8 @@ pub fn run() {
             ssh::ssh_test_connection,
             ssh::ssh_send_input,
             ssh::ssh_resize,
-            ssh::ssh_disconnect
+            ssh::ssh_disconnect,
+            restart_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

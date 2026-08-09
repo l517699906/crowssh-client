@@ -153,8 +153,15 @@
 }
 
 .transcript-status-entry.error .timeline-node-icon,
-.transcript-tool-entry.error .timeline-node-icon {
+.transcript-tool-entry.error .timeline-node-icon,
+.transcript-tool-entry.denied .timeline-node-icon,
+.transcript-tool-entry.expired .timeline-node-icon,
+.transcript-tool-entry.cancelled .timeline-node-icon {
   color: var(--danger);
+}
+
+.transcript-tool-entry.approval_required .timeline-node-icon {
+  color: var(--warning);
 }
 
 .transcript-duration {
@@ -249,6 +256,47 @@
   margin-top: 4px;
   color: var(--fg-disabled);
   font-size: 10px;
+}
+
+.tool-approval-actions {
+  min-width: 0;
+  margin: 7px 4px 2px 24px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tool-approval-btn {
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--bg-elevated);
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.tool-approval-btn.approve {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--border));
+  color: var(--success);
+}
+
+.tool-approval-btn.deny {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  color: var(--danger);
+}
+
+.tool-approval-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+.tool-approval-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .tool-error-message,

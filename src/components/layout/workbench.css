@@ -134,6 +134,36 @@
   flex-direction: column;
 }
 
+@media (max-width: 760px) {
+  .workbench {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .workbench > .splitter {
+    display: none;
+  }
+
+  .app-header .icon-btn.active:not(.pane-focused) {
+    background-color: transparent;
+    color: var(--fg-muted);
+  }
+
+  .workbench > .layout-pane {
+    display: none !important;
+    width: auto !important;
+    min-width: 0;
+    flex: 1 1 0 !important;
+  }
+
+  .workbench[data-active-pane="left"] > .layout-pane-left,
+  .workbench[data-active-pane="terminal"]
+    > .layout-pane-terminal[data-visible="true"],
+  .workbench[data-active-pane="right"] > .layout-pane-right {
+    display: flex !important;
+  }
+}
+
 /* ---------- Settings popover ---------- */
 .settings-popover {
   position: absolute;

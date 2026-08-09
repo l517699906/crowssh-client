@@ -22,6 +22,7 @@ export function ChatPanel({ terminal, server }: Props) {
     agents,
     availableModels,
     conversations,
+    decideCommandApproval,
     error,
     hydrated,
     loadingAgents,
@@ -155,6 +156,7 @@ export function ChatPanel({ terminal, server }: Props) {
           <MessageList
             key={displayedConversation?.id ?? `${view}:empty`}
             turns={displayedConversation?.turns ?? []}
+            onApprovalDecision={view === "chat" ? decideCommandApproval : undefined}
           />
           {view === "chat" && error && (
             <div className="chat-status" role="alert">{error}</div>

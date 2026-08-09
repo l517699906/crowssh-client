@@ -175,7 +175,11 @@ function reduceConversations(
         );
         return {
           ...turn,
-          statusText: action.item.status === "running" ? "正在执行命令" : turn.statusText,
+          statusText: action.item.status === "approval_required"
+            ? "等待命令确认"
+            : action.item.status === "running"
+              ? "正在执行命令"
+              : turn.statusText,
           items: existingItem
             ? turn.items.map((item) =>
                 item.type === "tool" && item.toolCallId === action.item.toolCallId
@@ -236,7 +240,16 @@ function reduceConversations(
                     status: "error" as const,
                     content: action.item.content === "已停止处理" ? "已停止" : "处理失败",
                   }
-                : item,
+                : item.type === "tool"
+                    && (item.status === "approval_required" || item.status === "running")
+                  ? {
+                      ...item,
+                      status: "cancelled" as const,
+                      completedAt: action.completedAt,
+                      durationMs: Math.max(0, action.completedAt - item.startedAt),
+                      errorMessage: "命令执行已取消。",
+                    }
+                  : item,
             ),
             action.item,
           ],

@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.test-dist
+src-tauri/tauri.release.conf.json
 *.local
 
 # Editor directories and files

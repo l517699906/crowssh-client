@@ -1,11 +1,15 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import {
+  Check,
   ChevronDown,
   CircleCheck,
   CircleX,
   LoaderCircle,
+  ShieldAlert,
   SquareTerminal,
+  X,
 } from "lucide-react";
+import type { CommandApprovalDecision } from "../../api/agent";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
@@ -22,6 +26,9 @@ function formatDuration(durationMs?: number) {
 }
 
 function executionIcon(status: TranscriptExecutionStatus, size = 14) {
+  if (status === "approval_required") {
+    return <ShieldAlert size={size} />;
+  }
   if (status === "running") {
     return <LoaderCircle className="transcript-spinner" size={size} />;
   }
@@ -68,15 +75,48 @@ function StatusEntry({
   );
 }
 
-function ToolEntry({ item }: { item: ToolTranscriptItem }) {
-  const [expanded, setExpanded] = useState(false);
+function ToolEntry({
+  item,
+  onApprovalDecision,
+}: {
+  item: ToolTranscriptItem;
+  onApprovalDecision?: (
+    item: ToolTranscriptItem,
+    decision: CommandApprovalDecision,
+  ) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(item.status === "approval_required");
+  const [decisionPending, setDecisionPending] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
   const command = item.command.trim();
   const duration = formatDuration(item.durationMs);
-  const statusLabel = item.status === "running"
-    ? "执行中"
-    : item.status === "success"
-      ? "已完成"
-      : "执行失败";
+  const statusLabel = {
+    approval_required: "等待确认",
+    running: "执行中",
+    success: "已完成",
+    error: "执行失败",
+    denied: "已拒绝",
+    expired: "已过期",
+    cancelled: "已取消",
+  }[item.status];
+  const showDetail = expanded || item.status === "approval_required";
+
+  useEffect(() => {
+    if (item.status === "approval_required") setExpanded(true);
+  }, [item.status]);
+
+  const submitDecision = async (decision: CommandApprovalDecision) => {
+    if (!onApprovalDecision || decisionPending) return;
+    setDecisionPending(true);
+    setDecisionError(null);
+    try {
+      await onApprovalDecision(item, decision);
+    } catch (reason) {
+      setDecisionError(reason instanceof Error ? reason.message : "命令审批提交失败");
+    } finally {
+      setDecisionPending(false);
+    }
+  };
 
   return (
     <div className={`timeline-item transcript-tool-entry ${item.status}`}>
@@ -104,7 +144,7 @@ function ToolEntry({ item }: { item: ToolTranscriptItem }) {
         )}
       </button>
 
-      {expanded && command && (
+      {showDetail && command && (
         <div className="tool-command-detail">
           <pre><code>{command}</code></pre>
           {item.outputLength !== undefined && (
@@ -113,6 +153,31 @@ function ToolEntry({ item }: { item: ToolTranscriptItem }) {
         </div>
       )}
 
+      {item.status === "approval_required" && onApprovalDecision && (
+        <div className="tool-approval-actions" role="group" aria-label="命令审批">
+          <button
+            type="button"
+            className="tool-approval-btn approve"
+            disabled={decisionPending}
+            onClick={() => void submitDecision("approve")}
+          >
+            <Check size={13} aria-hidden="true" />
+            允许
+          </button>
+          <button
+            type="button"
+            className="tool-approval-btn deny"
+            disabled={decisionPending}
+            onClick={() => void submitDecision("deny")}
+          >
+            <X size={13} aria-hidden="true" />
+            拒绝
+          </button>
+        </div>
+      )}
+
+      {decisionError && <div className="tool-error-message">{decisionError}</div>}
+
       {item.errorMessage && (
         <div className="tool-error-message">{item.errorMessage}</div>
       )}
@@ -120,7 +185,16 @@ function ToolEntry({ item }: { item: ToolTranscriptItem }) {
   );
 }
 
-export const TranscriptTurn = memo(function TranscriptTurn({ turn }: { turn: ChatTurn }) {
+export const TranscriptTurn = memo(function TranscriptTurn({
+  turn,
+  onApprovalDecision,
+}: {
+  turn: ChatTurn;
+  onApprovalDecision?: (
+    item: ToolTranscriptItem,
+    decision: CommandApprovalDecision,
+  ) => Promise<void>;
+}) {
   let lastTextIndex = -1;
   turn.items.forEach((item, index) => {
     if (item.type === "assistant_text") lastTextIndex = index;
@@ -148,7 +222,13 @@ export const TranscriptTurn = memo(function TranscriptTurn({ turn }: { turn: Cha
             );
           }
           if (item.type === "tool") {
-            return <ToolEntry key={item.id} item={item} />;
+            return (
+              <ToolEntry
+                key={item.id}
+                item={item}
+                onApprovalDecision={onApprovalDecision}
+              />
+            );
           }
           if (item.type === "error") {
             return (

@@ -1,5 +1,12 @@
 import { get, post, postStream } from "./request";
 import type { RuntimeModelConfig } from "../types/aiConfig";
+import {
+  parseChatStreamLine,
+  splitChatStreamLines,
+  type ChatStreamEvent,
+} from "./agentStreamProtocol";
+
+export type { ChatStreamEvent } from "./agentStreamProtocol";
 
 export interface AiAgentConfigDTO {
   agentId: string;
@@ -20,41 +27,7 @@ export interface ChatStreamPayload {
   runtimeModel: RuntimeModelConfig;
 }
 
-interface ChatStreamEventMetadata {
-  schemaVersion?: number;
-  eventId?: string;
-  sequence?: number;
-  timestamp?: number;
-  sessionId?: string;
-}
-
-export type ChatStreamEvent = ChatStreamEventMetadata & (
-  | { event: "status"; content: string; status: string }
-  | { event: "text"; content: string; fullText?: string }
-  | {
-      event: "tool_call";
-      toolCallId: string;
-      toolName: string;
-      command?: string;
-      status: string;
-      startedAt?: number;
-    }
-  | {
-      event: "tool_result";
-      toolCallId: string;
-      toolName?: string;
-      command?: string;
-      content?: string;
-      status: string;
-      startedAt?: number;
-      completedAt?: number;
-      durationMs?: number;
-      outputLength?: number;
-      errorMessage?: string;
-    }
-  | { event: "done"; content: string; stopReason?: string }
-  | { event: "error"; content: string; code?: string; retryable?: boolean }
-);
+export type CommandApprovalDecision = "approve" | "deny";
 
 export function getAgentConfigs() {
   return get<AiAgentConfigDTO[]>("/api/v1/query_ai_agent_config_list");
@@ -72,13 +45,19 @@ export function createSession(
   });
 }
 
-function parseStreamLine(line: string): ChatStreamEvent | null {
-  const normalized = line.startsWith("data:") ? line.slice(5).trim() : line.trim();
-  if (!normalized || normalized.startsWith(":")) return null;
+export function decideCommandApproval(
+  approvalId: string,
+  sessionId: string,
+  decision: CommandApprovalDecision,
+) {
+  return post<void>(`/api/v1/command_approvals/${encodeURIComponent(approvalId)}/decision`, {
+    sessionId,
+    decision,
+  });
+}
 
-  const value = JSON.parse(normalized) as Record<string, unknown>;
-  if (!value || typeof value.event !== "string") return null;
-  return value as unknown as ChatStreamEvent;
+export function cancelChatStream(sessionId: string, terminalSessionId: string) {
+  return post<void>("/api/v1/chat_stream/cancel", { sessionId, terminalSessionId });
 }
 
 export async function* streamChatMessage(
@@ -95,18 +74,14 @@ export async function* streamChatMessage(
       const { done, value } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
 
-      const lines = buffer.split(/\r?\n/);
-      buffer = done ? "" : lines.pop() ?? "";
+      const { lines, remainder } = splitChatStreamLines(buffer, done);
+      buffer = remainder;
       for (const line of lines) {
-        const event = parseStreamLine(line);
+        const event = parseChatStreamLine(line);
         if (event) yield event;
       }
 
-      if (done) {
-        const event = parseStreamLine(buffer);
-        if (event) yield event;
-        break;
-      }
+      if (done) break;
     }
   } finally {
     reader.releaseLock();

@@ -1,5 +1,5 @@
 import { PanelLeft, Plus, Sparkles, TerminalSquare } from "lucide-react";
-import { useLayoutStore } from "../../store/layoutStore";
+import { useLayoutStore, type LayoutPane } from "../../store/layoutStore";
 import type { useTerminals } from "../../hooks/useTerminals";
 import { TransferCenter } from "../transfers/TransferCenter";
 import { WindowTitleBar } from "../common/WindowTitleBar";
@@ -9,19 +9,34 @@ interface Props {
   onAddServer: () => void;
 }
 
+const NARROW_LAYOUT_QUERY = "(max-width: 760px)";
+
 export function Header({ terminals, onAddServer }: Props) {
   const toggleLeft = useLayoutStore((s) => s.toggleLeft);
   const toggleTerminal = useLayoutStore((s) => s.toggleTerminal);
   const toggleRight = useLayoutStore((s) => s.toggleRight);
+  const activatePane = useLayoutStore((s) => s.activatePane);
+  const activePane = useLayoutStore((s) => s.activePane);
   const terminalVisible = useLayoutStore((s) => s.terminalVisible);
   const rightVisible = useLayoutStore((s) => s.rightVisible);
 
   const active = terminals.sessions.find((s) => s.id === terminals.activeId);
+  const selectOrTogglePane = (pane: LayoutPane, toggle: () => void) => {
+    if (window.matchMedia(NARROW_LAYOUT_QUERY).matches && activePane !== pane) {
+      activatePane(pane);
+      return;
+    }
+    toggle();
+  };
 
   return (
     <WindowTitleBar className="app-header">
       <div className="header-left">
-        <button className="icon-btn" title="折叠侧边栏" onClick={toggleLeft}>
+        <button
+          className="icon-btn"
+          title="折叠侧边栏"
+          onClick={() => selectOrTogglePane("left", toggleLeft)}
+        >
           <PanelLeft size={17} />
         </button>
         <button className="icon-btn" title="添加 SSH 连接" onClick={onAddServer}>
@@ -45,16 +60,20 @@ export function Header({ terminals, onAddServer }: Props) {
       <div className="header-right">
         <TransferCenter />
         <button
-          className={`icon-btn${terminalVisible ? " active" : ""}`}
+          className={`icon-btn${terminalVisible ? " active" : ""}${
+            activePane === "terminal" ? " pane-focused" : ""
+          }`}
           title="终端面板"
-          onClick={toggleTerminal}
+          onClick={() => selectOrTogglePane("terminal", toggleTerminal)}
         >
           <TerminalSquare size={17} />
         </button>
         <button
-          className={`icon-btn${rightVisible ? " active" : ""}`}
+          className={`icon-btn${rightVisible ? " active" : ""}${
+            activePane === "right" ? " pane-focused" : ""
+          }`}
           title="AI 助手"
-          onClick={toggleRight}
+          onClick={() => selectOrTogglePane("right", toggleRight)}
         >
           <Sparkles size={17} />
         </button>

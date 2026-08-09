@@ -7,13 +7,14 @@ export interface ConnectionOptions {
   compression: boolean;
   startupCommand?: string;
   strictHostKeyCheck: boolean;
+  hostKeyFingerprint?: string;
 }
 
 export const DEFAULT_CONNECTION_OPTIONS: ConnectionOptions = {
   connectionTimeout: 30,
   keepAliveInterval: 60,
   compression: false,
-  strictHostKeyCheck: false,
+  strictHostKeyCheck: true,
 };
 
 export interface ServerConfig extends ConnectionOptions {
@@ -54,7 +55,14 @@ export interface TerminalSession {
 
 // ============ AI 对话 ============
 export type ChatTurnStatus = "running" | "completed" | "error";
-export type TranscriptExecutionStatus = "running" | "success" | "error";
+export type TranscriptExecutionStatus =
+  | "approval_required"
+  | "running"
+  | "success"
+  | "error"
+  | "denied"
+  | "expired"
+  | "cancelled";
 
 interface TranscriptItemBase {
   id: string;
@@ -77,6 +85,9 @@ export interface ToolTranscriptItem extends TranscriptItemBase {
   durationMs?: number;
   outputLength?: number;
   errorMessage?: string;
+  approvalId?: string;
+  expiresAt?: number;
+  riskLevel?: string;
 }
 
 export interface StatusTranscriptItem extends TranscriptItemBase {

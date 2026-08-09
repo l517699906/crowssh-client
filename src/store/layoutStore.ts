@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { load, save } from "../lib/storage";
 
 export type ActivityView = "servers" | "files";
+export type LayoutPane = "left" | "terminal" | "right";
 const KEY = "layout.state";
 
 interface Persisted {
@@ -26,6 +27,8 @@ const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
 interface LayoutState extends Persisted {
+  activePane: LayoutPane;
+  activatePane: (pane: LayoutPane) => void;
   selectActivity: (v: ActivityView) => void;
   showActivity: (v: ActivityView) => void;
   toggleLeft: () => void;
@@ -41,6 +44,14 @@ const init: Persisted = {
   ...DEFAULTS,
   ...stored,
   activeView: DEFAULTS.activeView,
+};
+
+const firstVisiblePane = (
+  state: Pick<Persisted, "leftVisible" | "terminalVisible" | "rightVisible">,
+): LayoutPane => {
+  if (state.leftVisible) return "left";
+  if (state.terminalVisible) return "terminal";
+  return "right";
 };
 
 function persist(s: LayoutState) {
@@ -64,36 +75,82 @@ function persist(s: LayoutState) {
 
 export const useLayoutStore = create<LayoutState>((set) => ({
   ...init,
+  activePane: firstVisiblePane(init),
+  activatePane: (pane) =>
+    set((s) => {
+      const next = {
+        activePane: pane,
+        ...(pane === "left" ? { leftVisible: true } : {}),
+        ...(pane === "terminal" ? { terminalVisible: true } : {}),
+        ...(pane === "right" ? { rightVisible: true } : {}),
+      };
+      persist({ ...s, ...next });
+      return next;
+    }),
   selectActivity: (v) =>
     set((s) => {
-      const next =
-        s.activeView === v && s.leftVisible
-          ? { leftVisible: false }
-          : { activeView: v, leftVisible: true };
+      if (s.activeView === v && s.leftVisible) {
+        const next = { leftVisible: false };
+        const result = {
+          ...next,
+          activePane:
+            s.activePane === "left"
+              ? firstVisiblePane({ ...s, ...next })
+              : s.activePane,
+        };
+        persist({ ...s, ...result });
+        return result;
+      }
+
+      const next = { activeView: v, leftVisible: true, activePane: "left" as const };
       persist({ ...s, ...next });
       return next;
     }),
   showActivity: (v) =>
     set((s) => {
-      const next = { activeView: v, leftVisible: true };
+      const next = { activeView: v, leftVisible: true, activePane: "left" as const };
       persist({ ...s, ...next });
       return next;
     }),
   toggleLeft: () =>
     set((s) => {
-      const n = { leftVisible: !s.leftVisible };
+      const leftVisible = !s.leftVisible;
+      const n = {
+        leftVisible,
+        activePane: leftVisible
+          ? ("left" as const)
+          : s.activePane === "left"
+            ? firstVisiblePane({ ...s, leftVisible })
+            : s.activePane,
+      };
       persist({ ...s, ...n });
       return n;
     }),
   toggleTerminal: () =>
     set((s) => {
-      const n = { terminalVisible: !s.terminalVisible };
+      const terminalVisible = !s.terminalVisible;
+      const n = {
+        terminalVisible,
+        activePane: terminalVisible
+          ? ("terminal" as const)
+          : s.activePane === "terminal"
+            ? firstVisiblePane({ ...s, terminalVisible })
+            : s.activePane,
+      };
       persist({ ...s, ...n });
       return n;
     }),
   toggleRight: () =>
     set((s) => {
-      const n = { rightVisible: !s.rightVisible };
+      const rightVisible = !s.rightVisible;
+      const n = {
+        rightVisible,
+        activePane: rightVisible
+          ? ("right" as const)
+          : s.activePane === "right"
+            ? firstVisiblePane({ ...s, rightVisible })
+            : s.activePane,
+      };
       persist({ ...s, ...n });
       return n;
     }),
@@ -112,6 +169,6 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   reset: () =>
     set((s) => {
       persist({ ...s, ...DEFAULTS });
-      return DEFAULTS;
+      return { ...DEFAULTS, activePane: "left" };
     }),
 }));

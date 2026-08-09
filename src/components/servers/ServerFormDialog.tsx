@@ -5,7 +5,9 @@ import {
   LoaderCircle,
   PlugZap,
   Server,
+  ShieldCheck,
   SlidersHorizontal,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import * as sshApi from "../../api/sshConnection";
@@ -34,9 +36,8 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
   const [keepAliveInterval, setKeepAliveInterval] = useState(initial?.keepAliveInterval ?? 60);
   const [compression, setCompression] = useState(initial?.compression ?? false);
   const [startupCommand, setStartupCommand] = useState(initial?.startupCommand ?? "");
-  const [strictHostKeyCheck, setStrictHostKeyCheck] = useState(
-    initial?.strictHostKeyCheck ?? false,
-  );
+  const [hostKeyFingerprint, setHostKeyFingerprint] = useState(initial?.hostKeyFingerprint ?? "");
+  const [pendingHostKey, setPendingHostKey] = useState<sshApi.SshHostKeyStatusDTO | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -52,7 +53,10 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
       : authType === "password"
         ? Boolean(password)
         : Boolean(privateKey.trim());
-  const canSave = Boolean(host.trim() && username.trim() && validPort && hasRequiredCredential);
+  const hasTrustedHostKey = Boolean(hostKeyFingerprint);
+  const canSave = Boolean(
+    host.trim() && username.trim() && validPort && hasRequiredCredential && hasTrustedHostKey,
+  );
 
   const hasTestCredential = authType === "password" ? Boolean(password) : Boolean(privateKey.trim());
 
@@ -61,6 +65,7 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
       setActiveSection("basic");
       if (!validPort) setError("端口必须在 1 到 65535 之间");
       else if (!hasRequiredCredential) setError("请填写当前认证方式所需的凭据");
+      else if (!hasTrustedHostKey) setError("请先测试连接并确认服务器指纹");
       return;
     }
     setError(null);
@@ -79,14 +84,15 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
       keepAliveInterval,
       compression,
       startupCommand: startupCommand.trim() || undefined,
-      strictHostKeyCheck,
+      strictHostKeyCheck: true,
+      hostKeyFingerprint,
     };
     const success = await onSave(initial ? { ...base, id: initial.id } : base);
     setSaving(false);
     if (success) onClose();
   };
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = async (trustedFingerprint = hostKeyFingerprint) => {
     if (testing || saving) return;
     if (!host.trim() || !username.trim() || !validPort) {
       setActiveSection("basic");
@@ -104,6 +110,7 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
 
     setError(null);
     setTestResult(null);
+    setPendingHostKey(null);
     setTesting(true);
     try {
       const response = await sshApi.testConnection({
@@ -118,8 +125,22 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
         keepaliveInterval: keepAliveInterval,
         compression,
         startupCommand: startupCommand.trim() || undefined,
-        strictHostKeyCheck,
+        strictHostKeyCheck: true,
+        hostKeyFingerprint: trustedFingerprint || undefined,
       });
+      if (
+        (response.code === "SSH_HOST_KEY_UNTRUSTED" || response.code === "SSH_HOST_KEY_CHANGED")
+        && response.data?.fingerprint
+      ) {
+        setPendingHostKey(response.data);
+        setTestResult({
+          success: false,
+          message: response.code === "SSH_HOST_KEY_CHANGED"
+            ? "服务器主机密钥与已保存指纹不一致，连接已拒绝"
+            : "请核对服务器主机密钥指纹",
+        });
+        return;
+      }
       if (response.code !== "0000") {
         setTestResult({ success: false, message: response.info || "连接测试失败" });
         return;
@@ -133,6 +154,20 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleTrustHostKey = async () => {
+    if (!pendingHostKey) return;
+    const fingerprint = pendingHostKey.fingerprint;
+    setHostKeyFingerprint(fingerprint);
+    setPendingHostKey(null);
+    await handleTestConnection(fingerprint);
+  };
+
+  const resetHostKey = () => {
+    setHostKeyFingerprint("");
+    setPendingHostKey(null);
+    setTestResult(null);
   };
 
   return (
@@ -192,7 +227,10 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
                   <input
                     className="input"
                     value={host}
-                    onChange={(e) => setHost(e.target.value)}
+                    onChange={(e) => {
+                      setHost(e.target.value);
+                      resetHostKey();
+                    }}
                     placeholder="192.168.1.10 或 example.com"
                   />
                 </div>
@@ -204,7 +242,10 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
                     min={1}
                     max={65535}
                     value={port}
-                    onChange={(e) => setPort(Number(e.target.value))}
+                    onChange={(e) => {
+                      setPort(Number(e.target.value));
+                      resetHostKey();
+                    }}
                   />
                 </div>
               </div>
@@ -357,14 +398,6 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
                   />
                   启用 SSH 数据压缩
                 </label>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={strictHostKeyCheck}
-                    onChange={(e) => setStrictHostKeyCheck(e.target.checked)}
-                  />
-                  严格校验 ~/.ssh/known_hosts
-                </label>
               </div>
             </div>
           )}
@@ -379,6 +412,26 @@ export function ServerFormDialog({ initial, onSave, onClose }: Props) {
                 role={testResult.success ? "status" : "alert"}
               >
                 {testResult.message}
+                {pendingHostKey && (
+                  <div className="host-key-challenge">
+                    <div className={pendingHostKey.changed ? "host-key-warning" : "host-key-summary"}>
+                      {pendingHostKey.changed
+                        ? <TriangleAlert size={14} />
+                        : <ShieldCheck size={14} />}
+                      <span>{pendingHostKey.algorithm}</span>
+                    </div>
+                    <code>{pendingHostKey.fingerprint}</code>
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={() => void handleTrustHostKey()}
+                      disabled={testing || saving}
+                    >
+                      <ShieldCheck size={14} />
+                      {pendingHostKey.changed ? "信任新指纹并重试" : "信任并重新测试"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {error && <div className="form-error" role="alert">{error}</div>}

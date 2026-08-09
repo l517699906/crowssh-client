@@ -6,6 +6,7 @@ import type {
   ChatTurn,
   ServerConfig,
   TerminalSession,
+  ToolTranscriptItem,
   TranscriptExecutionStatus,
 } from "../types";
 import * as agentApi from "../api/agent";
@@ -27,7 +28,12 @@ function normalizeResultStatus(status: string): TranscriptExecutionStatus {
   if (["success", "succeeded", "completed", "complete"].includes(normalized)) {
     return "success";
   }
-  return normalized === "running" ? "running" : "error";
+  if (normalized === "approval_required") return "approval_required";
+  if (normalized === "running") return "running";
+  if (["denied", "expired", "cancelled"].includes(normalized)) {
+    return normalized as TranscriptExecutionStatus;
+  }
+  return "error";
 }
 
 function displayServerName(server: ServerConfig | undefined, terminal: TerminalSession): string {
@@ -167,7 +173,57 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
 
   const stopMessage = useCallback(() => {
     if (!activeId) return;
+    const state = useChatStore.getState();
+    const conversation = state.conversations.find((item) => item.id === activeId);
+    if (conversation?.serverSessionId && terminal?.backendSessionId) {
+      void agentApi.cancelChatStream(
+        conversation.serverSessionId,
+        terminal.backendSessionId,
+      );
+    }
     streamControllers.get(activeId)?.abort();
+  }, [activeId, terminal?.backendSessionId]);
+
+  const decideCommandApproval = useCallback(async (
+    item: ToolTranscriptItem,
+    decision: agentApi.CommandApprovalDecision,
+  ) => {
+    if (!activeId || !item.approvalId) {
+      throw new Error("命令审批信息已失效");
+    }
+    const state = useChatStore.getState();
+    const conversation = state.conversations.find((entry) => entry.id === activeId);
+    const turn = conversation?.turns.find((entry) =>
+      entry.items.some((transcriptItem) =>
+        transcriptItem.type === "tool" && transcriptItem.toolCallId === item.toolCallId));
+    if (!conversation?.serverSessionId || !turn) {
+      throw new Error("AI 会话已失效，无法提交命令审批");
+    }
+
+    const response = await agentApi.decideCommandApproval(
+      item.approvalId,
+      conversation.serverSessionId,
+      decision,
+    );
+    if (response.code !== "0000") {
+      throw new Error(response.info || "命令审批提交失败");
+    }
+
+    const completedAt = Date.now();
+    state.dispatch({
+      type: "upsert_tool",
+      conversationId: conversation.id,
+      turnId: turn.id,
+      item: {
+        ...item,
+        status: decision === "approve" ? "running" : "denied",
+        completedAt: decision === "deny" ? completedAt : undefined,
+        durationMs: decision === "deny"
+          ? Math.max(0, completedAt - item.startedAt)
+          : undefined,
+        errorMessage: decision === "deny" ? "用户已拒绝执行该命令。" : undefined,
+      },
+    });
   }, [activeId]);
 
   const sendMessage = useCallback(async (text: string) => {
@@ -315,6 +371,29 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
             queueText(activeTextItemId, chunk);
             textSinceLastTool = true;
           }
+        } else if (event.event === "tool_approval_required") {
+          flushPendingText();
+          activeTextItemId = null;
+          textSinceLastTool = false;
+          toolCalls.add(event.toolCallId);
+          useChatStore.getState().dispatch({
+            type: "upsert_tool",
+            conversationId: conversation.id,
+            turnId,
+            item: {
+              id: `${turnId}:tool:${event.toolCallId}`,
+              type: "tool",
+              toolCallId: event.toolCallId,
+              toolName: event.toolName || "executeCommand",
+              command: event.command ?? "",
+              status: "approval_required",
+              approvalId: event.approvalId,
+              expiresAt: event.expiresAt,
+              riskLevel: event.riskLevel,
+              startedAt: event.startedAt ?? eventTime,
+              createdAt: eventTime,
+            },
+          });
         } else if (event.event === "tool_call") {
           flushPendingText();
           activeTextItemId = null;
@@ -341,7 +420,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
           textSinceLastTool = false;
           toolCalls.add(event.toolCallId);
           const status = normalizeResultStatus(event.status);
-          toolFailed ||= status === "error";
+          toolFailed ||= status !== "success";
           const startedAt = event.startedAt ?? eventTime;
           const completedAt = event.completedAt ?? eventTime;
           useChatStore.getState().dispatch({
@@ -359,7 +438,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
               completedAt,
               durationMs: event.durationMs ?? Math.max(0, completedAt - startedAt),
               outputLength: event.outputLength,
-              errorMessage: status === "error"
+              errorMessage: status !== "success"
                 ? event.errorMessage || "命令执行失败，请查看终端输出。"
                 : undefined,
               createdAt: eventTime,
@@ -455,5 +534,6 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     setModel,
     sendMessage,
     stopMessage,
+    decideCommandApproval,
   };
 }

@@ -46,10 +46,8 @@ function toServerConfig(
       dto.keepaliveInterval ?? legacyOptions?.keepAliveInterval ?? DEFAULT_CONNECTION_OPTIONS.keepAliveInterval,
     compression: dto.compression ?? legacyOptions?.compression ?? DEFAULT_CONNECTION_OPTIONS.compression,
     startupCommand: dto.startupCommand ?? legacyOptions?.startupCommand,
-    strictHostKeyCheck:
-      dto.strictHostKeyCheck
-      ?? legacyOptions?.strictHostKeyCheck
-      ?? DEFAULT_CONNECTION_OPTIONS.strictHostKeyCheck,
+    strictHostKeyCheck: true,
+    hostKeyFingerprint: dto.hostKeyFingerprint ?? legacyOptions?.hostKeyFingerprint,
   };
 }
 
@@ -67,7 +65,8 @@ function toPayload(config: ServerConfig | Omit<ServerConfig, "id">): SshConnecti
     keepaliveInterval: config.keepAliveInterval,
     startupCommand: config.startupCommand || undefined,
     compression: config.compression,
-    strictHostKeyCheck: config.strictHostKeyCheck,
+    strictHostKeyCheck: true,
+    hostKeyFingerprint: config.hostKeyFingerprint,
   };
 }
 

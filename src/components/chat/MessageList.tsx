@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, MessagesSquare } from "lucide-react";
-import type { ChatTurn } from "../../types";
+import type { CommandApprovalDecision } from "../../api/agent";
+import type { ChatTurn, ToolTranscriptItem } from "../../types";
 import { TranscriptTurn } from "./MessageBubble";
 
 interface Props {
   turns: ChatTurn[];
+  onApprovalDecision?: (
+    item: ToolTranscriptItem,
+    decision: CommandApprovalDecision,
+  ) => Promise<void>;
 }
 
 const BOTTOM_THRESHOLD = 72;
 
-export function MessageList({ turns }: Props) {
+export function MessageList({ turns, onApprovalDecision }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const followsOutputRef = useRef(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -53,7 +58,11 @@ export function MessageList({ turns }: Props) {
     <div className="transcript-shell">
       <div ref={listRef} className="transcript-list" onScroll={updateScrollState}>
         {turns.map((turn) => (
-          <TranscriptTurn key={turn.id} turn={turn} />
+          <TranscriptTurn
+            key={turn.id}
+            turn={turn}
+            onApprovalDecision={onApprovalDecision}
+          />
         ))}
       </div>
       {showJumpToBottom && (

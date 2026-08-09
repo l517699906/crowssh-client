@@ -12,10 +12,14 @@ const ITEMS: { view: ActivityView; icon: typeof Server; label: string }[] = [
   { view: "files", icon: Folder, label: "远程文件" },
 ];
 
+const NARROW_LAYOUT_QUERY = "(max-width: 760px)";
+
 export function ActivityBar() {
   const activeView = useLayoutStore((s) => s.activeView);
   const leftVisible = useLayoutStore((s) => s.leftVisible);
+  const activePane = useLayoutStore((s) => s.activePane);
   const selectActivity = useLayoutStore((s) => s.selectActivity);
+  const showActivity = useLayoutStore((s) => s.showActivity);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -30,7 +34,16 @@ export function ActivityBar() {
               key={view}
               className={`activity-item${active ? " active" : ""}`}
               title={label}
-              onClick={() => selectActivity(view)}
+              onClick={() => {
+                if (
+                  window.matchMedia(NARROW_LAYOUT_QUERY).matches &&
+                  activePane !== "left"
+                ) {
+                  showActivity(view);
+                  return;
+                }
+                selectActivity(view);
+              }}
             >
               <Icon size={22} strokeWidth={1.6} />
             </button>

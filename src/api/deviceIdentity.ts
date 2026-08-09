@@ -4,6 +4,7 @@ import { buildRequestUrl } from "./config";
 
 const REGISTER_PATH = "/api/v1/auth/device/register";
 const REGISTER_TIMEOUT_MS = 15_000;
+const REGISTRATION_CODE = (import.meta.env.VITE_CROWSSH_REGISTRATION_CODE as string | undefined)?.trim();
 
 export interface DeviceIdentity {
   principalId: string;
@@ -41,9 +42,11 @@ async function registerIdentity(): Promise<DeviceIdentity> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), REGISTER_TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (REGISTRATION_CODE) headers["X-CrowSSH-Registration-Code"] = REGISTRATION_CODE;
     const response = await fetch(buildRequestUrl(REGISTER_PATH), {
       method: "POST",
-      headers: { Accept: "application/json" },
+      headers,
       signal: controller.signal,
     });
     const result = (await response.json()) as RegistrationResponse;

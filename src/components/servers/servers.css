@@ -236,7 +236,7 @@
 
 .server-form-feedback {
   flex: 0 0 auto;
-  max-height: 96px;
+  max-height: 180px;
   display: grid;
   gap: 6px;
   padding: 8px 16px;
@@ -262,6 +262,39 @@
 
 .form-test-result.error {
   color: var(--danger);
+}
+
+.host-key-challenge {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.host-key-summary,
+.host-key-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.host-key-warning {
+  color: var(--danger);
+}
+
+.host-key-challenge code {
+  padding: 7px 8px;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-terminal);
+  color: var(--fg);
+  font-family: "JetBrains Mono", monospace;
+  user-select: text;
+}
+
+.host-key-challenge .btn {
+  justify-self: start;
 }
 
 /* 分段控件（认证方式切换） */

@@ -22,6 +22,7 @@ export interface SshConnectionDTO {
     startupCommand?: string
     compression?: boolean
     strictHostKeyCheck?: boolean
+    hostKeyFingerprint?: string
 }
 
 /** 创建/更新连接请求体 */
@@ -39,6 +40,13 @@ export interface SshConnectionPayload {
     startupCommand?: string
     compression?: boolean
     strictHostKeyCheck?: boolean
+    hostKeyFingerprint?: string
+}
+
+export interface SshHostKeyStatusDTO {
+    fingerprint: string
+    algorithm: string
+    changed: boolean
 }
 
 // ===== API 方法 =====
@@ -73,12 +81,12 @@ export function getConnectionList() {
 /** 使用服务端实际网络环境测试 SSH 连接，不保存连接 */
 export function testConnection(payload: SshConnectionPayload) {
     const connectTimeoutMs = Math.max(1, payload.connectTimeout ?? 30) * 1000
-    return postWithTimeout<void>(`${BASE}/test_connection`, payload, connectTimeoutMs + 5000)
+    return postWithTimeout<SshHostKeyStatusDTO>(`${BASE}/test_connection`, payload, connectTimeoutMs + 5000)
 }
 
 /** 建立 SSH 连接 */
 export function connect(connectionId: string) {
-    return post<void>(`${BASE}/connect`, undefined, { connectionId })
+    return post<SshHostKeyStatusDTO>(`${BASE}/connect`, undefined, { connectionId })
 }
 
 /** 断开 SSH 连接 */
