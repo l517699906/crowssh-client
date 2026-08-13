@@ -1,12 +1,32 @@
 import { useCallback, useState } from "react";
+import * as agentApi from "../api/agent";
 import type { ServerConfig, SessionStatus, TerminalSession } from "../types";
 import { uid } from "../lib/storage";
+import { abortConversationStream } from "./useChat";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 
 export function useTerminals() {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  const interruptSessionChat = useCallback((id: string) => {
+    const chatState = useChatStore.getState();
+    const conversationId = chatState.runningByTerminal[id];
+    if (!conversationId) return;
+
+    const conversation = chatState.conversations.find(
+      (item) => item.id === conversationId,
+    );
+    const terminal = sessions.find((item) => item.id === id);
+    if (conversation?.serverSessionId && terminal?.backendSessionId) {
+      void agentApi.cancelChatStream(
+        conversation.serverSessionId,
+        terminal.backendSessionId,
+      );
+    }
+    abortConversationStream(conversationId);
+  }, [sessions]);
 
   /** 为服务器开启一个新终端会话（实际 SSH 连接由 TerminalView 挂载时发起） */
   const openSession = useCallback((server: ServerConfig) => {
@@ -36,6 +56,7 @@ export function useTerminals() {
   }, []);
 
   const closeSession = useCallback((id: string) => {
+    interruptSessionChat(id);
     useChatStore.getState().releaseTerminal(id);
     useWorkspaceStore.getState().removeWorkspace(id);
     setSessions((prev) => {
@@ -45,7 +66,7 @@ export function useTerminals() {
       );
       return next;
     });
-  }, []);
+  }, [interruptSessionChat]);
 
   const setStatus = useCallback(
     (id: string, status: SessionStatus, error?: string) => {
@@ -85,6 +106,7 @@ export function useTerminals() {
     activeId,
     openSession,
     closeSession,
+    interruptSessionChat,
     setActive: setActiveId,
     setStatus,
     setBackendSessionId,

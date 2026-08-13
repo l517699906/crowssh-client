@@ -86,7 +86,6 @@ export interface ToolTranscriptItem extends TranscriptItemBase {
   outputLength?: number;
   errorMessage?: string;
   approvalId?: string;
-  expiresAt?: number;
   riskLevel?: string;
 }
 

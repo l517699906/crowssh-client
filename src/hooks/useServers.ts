@@ -214,6 +214,31 @@ export function useServers() {
     [rememberCredentials],
   );
 
+  const trustHostKey = useCallback(async (config: ServerConfig, fingerprint: string): Promise<boolean> => {
+    setError(null);
+    const response = await sshApi.trustHostKey({
+      connectionId: config.id,
+      connectionName: config.name,
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      authType: config.authType === "key" ? 2 : 1,
+      connectTimeout: config.connectionTimeout,
+      keepaliveInterval: config.keepAliveInterval,
+      startupCommand: config.startupCommand,
+      compression: config.compression,
+      strictHostKeyCheck: true,
+    }, fingerprint);
+    if (response.code !== "0000" || !response.data) {
+      setError(response.info || "保存主机指纹失败");
+      return false;
+    }
+    setServers((current) => current.map((item) =>
+      item.id === config.id ? { ...item, hostKeyFingerprint: fingerprint } : item,
+    ));
+    return true;
+  }, []);
+
   const removeServer = useCallback(
     async (id: string): Promise<boolean> => {
       setError(null);
@@ -254,6 +279,7 @@ export function useServers() {
     refresh,
     addServer,
     updateServer,
+    trustHostKey,
     removeServer,
     hasCredentials,
   };

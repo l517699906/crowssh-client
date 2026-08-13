@@ -16,7 +16,6 @@ export type ChatStreamEvent = ChatStreamEventMetadata & (
       command: string;
       status: "approval_required";
       approvalId: string;
-      expiresAt: number;
       riskLevel?: string;
       startedAt?: number;
     }

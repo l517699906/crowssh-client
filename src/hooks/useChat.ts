@@ -23,6 +23,10 @@ import {
 
 const streamControllers = new Map<string, AbortController>();
 
+export function abortConversationStream(conversationId: string) {
+  streamControllers.get(conversationId)?.abort();
+}
+
 function normalizeResultStatus(status: string): TranscriptExecutionStatus {
   const normalized = status.toLowerCase();
   if (["success", "succeeded", "completed", "complete"].includes(normalized)) {
@@ -181,7 +185,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
         terminal.backendSessionId,
       );
     }
-    streamControllers.get(activeId)?.abort();
+    abortConversationStream(activeId);
   }, [activeId, terminal?.backendSessionId]);
 
   const decideCommandApproval = useCallback(async (
@@ -388,7 +392,6 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
               command: event.command ?? "",
               status: "approval_required",
               approvalId: event.approvalId,
-              expiresAt: event.expiresAt,
               riskLevel: event.riskLevel,
               startedAt: event.startedAt ?? eventTime,
               createdAt: eventTime,

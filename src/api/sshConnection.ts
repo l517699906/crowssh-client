@@ -63,6 +63,24 @@ export function updateConnection(payload: SshConnectionPayload) {
     return post<SshConnectionDTO>(`${BASE}/update_connection`, payload)
 }
 
+/** 保存服务端返回的主机指纹，认证凭据仍由服务端保留。 */
+export function trustHostKey(config: SshConnectionPayload, fingerprint: string) {
+    return updateConnection({
+        connectionId: config.connectionId,
+        connectionName: config.connectionName,
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        authType: config.authType,
+        connectTimeout: config.connectTimeout,
+        keepaliveInterval: config.keepaliveInterval,
+        startupCommand: config.startupCommand,
+        compression: config.compression,
+        strictHostKeyCheck: true,
+        hostKeyFingerprint: fingerprint,
+    })
+}
+
 /** 删除 SSH 连接（POST + @RequestParam connectionId） */
 export function deleteConnection(connectionId: string) {
     return post<void>(`${BASE}/delete_connection`, undefined, { connectionId })

@@ -31,6 +31,7 @@ interface Props {
   setStatus: (id: string, status: SessionStatus, error?: string) => void;
   setBackendSessionId: (id: string, backendSessionId?: string) => void;
   onConnected: () => void;
+  onHostKeyChallenge: (challenge: sshApi.SshHostKeyStatusDTO) => void;
 }
 
 export interface TerminalViewHandle {
@@ -51,6 +52,7 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     setStatus,
     setBackendSessionId,
     onConnected,
+    onHostKeyChallenge,
   },
   ref,
 ) {
@@ -249,6 +251,12 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     const connect = async () => {
       try {
         const connectResponse = await sshApi.connect(server.id);
+        if (
+          (connectResponse.code === "SSH_HOST_KEY_UNTRUSTED" || connectResponse.code === "SSH_HOST_KEY_CHANGED")
+          && connectResponse.data?.fingerprint
+        ) {
+          onHostKeyChallenge(connectResponse.data);
+        }
         if (connectResponse.code !== "0000") {
           throw responseError(connectResponse.info, "SSH 连接失败");
         }

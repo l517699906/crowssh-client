@@ -13,13 +13,15 @@ interface Props {
   servers: ServerConfig[];
   panelVisible: boolean;
   onConnectionReady: () => void;
+  onHostKeyChallenge: (server: ServerConfig, sessionId: string, challenge: import("../../api/sshConnection").SshHostKeyStatusDTO) => void;
 }
 
-export function TerminalPanel({ terminals, servers, panelVisible, onConnectionReady }: Props) {
+export function TerminalPanel({ terminals, servers, panelVisible, onConnectionReady, onHostKeyChallenge }: Props) {
   const {
     sessions,
     activeId,
     closeSession,
+    interruptSessionChat,
     reconnectSession,
     setActive,
     setBackendSessionId,
@@ -55,6 +57,7 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
     if (!reconnectingSession) return;
     if (reconnectingRef.current.has(sessionId)) return;
     reconnectingRef.current.add(sessionId);
+    interruptSessionChat(sessionId);
     try {
       await viewRefs.current
         .get(sessionId)
@@ -64,6 +67,13 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
     }
     reconnectSession(sessionId);
     reconnectingRef.current.delete(sessionId);
+  };
+
+  const handleDisconnect = async (session: TerminalSession) => {
+    interruptSessionChat(session.id);
+    await viewRefs.current
+      .get(session.id)
+      ?.disconnect(isOnlySessionForServer(session));
   };
 
   return (
@@ -116,11 +126,7 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
               type="button"
               title="断开连接"
               disabled={activeSession.status !== "connected"}
-              onClick={() =>
-                void viewRefs.current
-                  .get(activeSession.id)
-                  ?.disconnect(isOnlySessionForServer(activeSession))
-              }
+              onClick={() => void handleDisconnect(activeSession)}
             >
               <PlugZap size={15} />
             </button>
@@ -170,6 +176,7 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
                   setBackendSessionId={setBackendSessionId}
                   setStatus={setStatus}
                   onConnected={onConnectionReady}
+                  onHostKeyChallenge={(challenge) => onHostKeyChallenge(server, s.id, challenge)}
                 />
               </ErrorBoundary>
             ) : null;
