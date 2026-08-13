@@ -4,6 +4,7 @@ import {
   isActiveTransfer,
   useTransferStore,
 } from "../store/transferStore";
+import { useFloatingPanelStore } from "../store/floatingPanelStore";
 import type { TransferTask } from "../types/transfer";
 
 const MAX_CONCURRENT_TRANSFERS = 2;
@@ -89,6 +90,14 @@ function hasActiveTransferForConnection(connectionId: string) {
     if (getTask(id)?.connectionId === connectionId) return true;
   }
   return false;
+}
+
+function addTransferTasks(tasks: TransferTask[]) {
+  const shouldOpenPanel = !useTransferStore.getState().tasks.some(isActiveTransfer);
+  useTransferStore.getState().addTasks(tasks);
+  if (shouldOpenPanel) {
+    useFloatingPanelStore.getState().setActivePanel("transfers");
+  }
 }
 
 function reportProgress(id: string, loaded: number, total: number) {
@@ -279,7 +288,7 @@ export function enqueueUploads(
     remaining: new Set(tasks.map((task) => task.id)),
     onSettled: onBatchSettled,
   });
-  useTransferStore.getState().addTasks(tasks);
+  addTransferTasks(tasks);
   pumpQueue();
   return tasks.map((task) => task.id);
 }
@@ -305,7 +314,7 @@ export function enqueueDownloads(
   for (let index = 0; index < tasks.length; index += 1) {
     sources.set(tasks[index].id, { kind: "download", file: files[index] });
   }
-  useTransferStore.getState().addTasks(tasks);
+  addTransferTasks(tasks);
   pumpQueue();
   return tasks.map((task) => task.id);
 }
@@ -350,7 +359,7 @@ export function retryTransfer(id: string) {
     finishedAt: undefined,
     attempt: task.attempt + 1,
   });
-  useTransferStore.getState().setPanelMode("expanded");
+  useFloatingPanelStore.getState().setActivePanel("transfers");
   pumpQueue();
   return true;
 }

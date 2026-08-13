@@ -39,6 +39,7 @@
 }
 .header-conn {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   font-size: 12px;
@@ -46,6 +47,7 @@
   max-width: 260px;
 }
 .header-conn-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -58,7 +60,7 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--fg-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 .icon-btn.active {
   background-color: var(--bg-selected-soft);
@@ -135,6 +137,18 @@
 }
 
 @media (max-width: 760px) {
+  .header-left {
+    flex: 1 1 auto;
+  }
+
+  .header-title {
+    display: none;
+  }
+
+  .header-conn {
+    flex: 1 1 auto;
+  }
+
   .workbench {
     min-width: 0;
     overflow: hidden;

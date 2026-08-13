@@ -6,5 +6,13 @@
     "outDir": ".test-dist",
     "rootDir": "."
   },
-  "include": ["src/api/agentStreamProtocol.ts"]
+  "include": [
+    "src/vite-env.d.ts",
+    "src/api/agentStreamProtocol.ts",
+    "src/api/serverMonitor.ts",
+    "src/api/request.ts",
+    "src/api/deviceIdentity.ts",
+    "src/api/config.ts",
+    "src/lib/serverMonitorMetrics.ts"
+  ]
 }

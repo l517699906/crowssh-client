@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   ArrowUpDown,
@@ -21,6 +21,7 @@ import {
   isActiveTransfer,
   useTransferStore,
 } from "../../store/transferStore";
+import { useFloatingPanelStore } from "../../store/floatingPanelStore";
 import type { TransferTask } from "../../types/transfer";
 import "./transfers.css";
 
@@ -178,13 +179,34 @@ function filterTasks(tasks: TransferTask[], filter: TransferFilter) {
 }
 
 export function TransferCenter() {
-  const { tasks, panelMode } = useTransferStore(
-    useShallow((state) => ({
-      tasks: state.tasks,
-      panelMode: state.panelMode,
-    })),
-  );
+  const tasks = useTransferStore(useShallow((state) => state.tasks));
   const [filter, setFilter] = useState<TransferFilter>("all");
+  const expanded = useFloatingPanelStore((state) => state.activePanel === "transfers");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const closePanel = () => {
+      useFloatingPanelStore.getState().setActivePanel(null);
+      triggerRef.current?.focus();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closePanel();
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      closePanel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [expanded]);
 
   const summary = useMemo(() => {
     let active = 0;
@@ -245,7 +267,6 @@ export function TransferCenter() {
           : summary.cancelled > 0
             ? `${summary.success} 完成 · ${summary.cancelled} 取消`
             : `${summary.success} 项已完成`;
-  const expanded = panelMode === "expanded";
   const triggerTitle = expanded
     ? "收起文件传输面板"
     : summary.active > 0
@@ -262,6 +283,7 @@ export function TransferCenter() {
       data-window-no-drag
     >
       <button
+        ref={triggerRef}
         className={`transfer-menu-button${expanded ? " active" : ""}${
           summary.active > 0 ? " transferring" : ""
         }${summary.failed > 0 ? " has-failures" : ""}`}
@@ -271,9 +293,7 @@ export function TransferCenter() {
         aria-expanded={expanded}
         aria-controls="transfer-panel"
         onClick={() =>
-          useTransferStore
-            .getState()
-            .setPanelMode(expanded ? "collapsed" : "expanded")
+          useFloatingPanelStore.getState().togglePanel("transfers")
         }
       >
         <ArrowUpDown size={16} />
@@ -297,7 +317,12 @@ export function TransferCenter() {
       </button>
 
       {expanded ? (
-        <aside id="transfer-panel" className="transfer-panel" aria-label="文件传输">
+        <aside
+          ref={panelRef}
+          id="transfer-panel"
+          className="transfer-panel"
+          aria-label="文件传输"
+        >
           <div className="transfer-panel-header">
             <div className="transfer-panel-heading">
               <ArrowUpDown size={15} />
@@ -323,7 +348,10 @@ export function TransferCenter() {
                 type="button"
                 title="收起传输面板"
                 aria-label="收起传输面板"
-                onClick={() => useTransferStore.getState().setPanelMode("collapsed")}
+                onClick={() => {
+                  useFloatingPanelStore.getState().setActivePanel(null);
+                  triggerRef.current?.focus();
+                }}
               >
                 <ChevronUp size={15} />
               </button>

@@ -2,6 +2,7 @@ import { PanelLeft, Plus, Sparkles, TerminalSquare } from "lucide-react";
 import { useLayoutStore, type LayoutPane } from "../../store/layoutStore";
 import type { useTerminals } from "../../hooks/useTerminals";
 import { TransferCenter } from "../transfers/TransferCenter";
+import { ServerMonitorPanel } from "../monitor/ServerMonitorPanel";
 import { WindowTitleBar } from "../common/WindowTitleBar";
 
 interface Props {
@@ -53,6 +54,7 @@ export function Header({ terminals, onAddServer }: Props) {
             <span className="header-conn-empty">未连接</span>
           )}
         </div>
+        <ServerMonitorPanel terminal={active} />
       </div>
 
       <div className="header-title">CrowSSH</div>

@@ -28,12 +28,16 @@ async function request<T>(
     body?: unknown,
     params?: Record<string, string>,
     timeoutMs = TIMEOUT_MS,
+    signal?: AbortSignal,
 ): Promise<ApiResponse<T>> {
     // 拼接 query string
     const url = buildRequestUrl(path, params)
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const abortFromCaller = () => controller.abort()
+    signal?.addEventListener('abort', abortFromCaller, { once: true })
+    if (signal?.aborted) controller.abort()
 
     try {
         const headers = await withDeviceAuthorization(
@@ -58,12 +62,23 @@ async function request<T>(
         return { code: 'NETWORK_ERROR', info: err?.message || '网络错误', data: null }
     } finally {
         clearTimeout(timer)
+        signal?.removeEventListener('abort', abortFromCaller)
     }
 }
 
 /** GET 请求 */
 export function get<T>(path: string, params?: Record<string, string>) {
     return request<T>('GET', path, undefined, params)
+}
+
+/** GET 请求，允许短轮询接口指定独立超时。 */
+export function getWithTimeout<T>(
+    path: string,
+    params: Record<string, string>,
+    timeoutMs: number,
+    signal?: AbortSignal,
+) {
+    return request<T>('GET', path, undefined, params, timeoutMs, signal)
 }
 
 /** POST 请求（JSON body + 可选 query params） */
