@@ -13,6 +13,7 @@
     "src/api/request.ts",
     "src/api/deviceIdentity.ts",
     "src/api/config.ts",
-    "src/lib/serverMonitorMetrics.ts"
+    "src/lib/serverMonitorMetrics.ts",
+    "src/lib/uploadLimits.ts"
   ]
 }

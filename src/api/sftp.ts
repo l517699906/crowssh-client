@@ -8,6 +8,10 @@ import {
   type ApiResponse,
 } from "./request";
 import { getDeviceAuthorizationValue } from "./deviceIdentity";
+import {
+  assertUploadFileSize,
+  uploadHttpErrorMessage,
+} from "../lib/uploadLimits";
 
 const BASE = "/api/v1/ssh/sftp";
 const LONG_OPERATION_TIMEOUT_MS = 5 * 60 * 1_000 + 10_000;
@@ -129,6 +133,7 @@ export async function uploadFile(
   file: File,
   options: UploadRequestOptions = {},
 ) {
+  assertUploadFileSize(file.size);
   const authorization = await getDeviceAuthorizationValue();
   const form = new FormData();
   form.append("connectionId", connectionId);
@@ -173,7 +178,10 @@ export async function uploadFile(
     };
     xhr.upload.onload = () => options.onUploadComplete?.();
     xhr.onload = () => {
-      const fallback = xhr.statusText || `上传失败 (${xhr.status})`;
+      const fallback = uploadHttpErrorMessage(
+        xhr.status,
+        xhr.statusText || `上传失败 (${xhr.status})`,
+      );
       if (xhr.status < 200 || xhr.status >= 300) {
         fail(responseError(xhr.responseText, fallback));
         return;
@@ -190,7 +198,12 @@ export async function uploadFile(
       options.onProgress?.({ loaded: file.size, total: file.size });
       succeed();
     };
-    xhr.onerror = () => fail(new Error("上传失败：无法连接服务端"));
+    xhr.onerror = () => fail(
+      new Error(uploadHttpErrorMessage(
+        xhr.status,
+        "上传失败：请求被网络或服务端网关中断",
+      )),
+    );
     xhr.onabort = () => fail(abortError());
     xhr.send(form);
   });
