@@ -85,6 +85,7 @@ export function FilesView({ server, activeSessionId }: Props) {
   const fileListRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{
     file: RemoteFile;
+    target: "entry" | "directory";
     x: number;
     y: number;
   } | null>(null);
@@ -289,6 +290,30 @@ export function FilesView({ server, activeSessionId }: Props) {
   });
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const handleDirectoryContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      if (!path || loading) {
+        setContextMenu(null);
+        return;
+      }
+
+      setContextMenu({
+        file: {
+          name: path,
+          path,
+          directory: true,
+          size: 0,
+          modifiedAt: 0,
+        },
+        target: "directory",
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [loading, path],
+  );
   const handleContextAction = useCallback((action: RemoteFileAction) => {
     const file = contextMenu?.file;
     setContextMenu(null);
@@ -391,12 +416,12 @@ export function FilesView({ server, activeSessionId }: Props) {
           )}
 
           {loading && files.length === 0 ? (
-            <div className="empty-state">
+            <div className="empty-state" onContextMenu={handleDirectoryContextMenu}>
               <LoaderCircle size={28} strokeWidth={1.5} className="spin" />
               <div className="empty-title">正在读取远程目录</div>
             </div>
           ) : files.length === 0 ? (
-            <div className="empty-state">
+            <div className="empty-state" onContextMenu={handleDirectoryContextMenu}>
               <Folder size={28} strokeWidth={1.5} />
               <div className="empty-title">目录为空</div>
             </div>
@@ -406,6 +431,7 @@ export function FilesView({ server, activeSessionId }: Props) {
               className="file-list"
               role="list"
               aria-busy={loading}
+              onContextMenu={handleDirectoryContextMenu}
               onScroll={(event) => {
                 if (!activeSessionId) return;
                 useWorkspaceStore
@@ -424,7 +450,7 @@ export function FilesView({ server, activeSessionId }: Props) {
                 return (
                   <div
                     key={file.path}
-                    className={`file-item${file.directory ? " directory" : ""}${editable ? " editable" : ""}${contextMenu?.file.path === file.path || fileOperations.dialog?.file.path === file.path ? " context-target" : ""}`}
+                    className={`file-item${file.directory ? " directory" : ""}${editable ? " editable" : ""}${(contextMenu?.target === "entry" && contextMenu.file.path === file.path) || fileOperations.dialog?.file.path === file.path ? " context-target" : ""}`}
                     role="listitem"
                     tabIndex={0}
                     aria-haspopup="menu"
@@ -432,7 +458,12 @@ export function FilesView({ server, activeSessionId }: Props) {
                     onDoubleClick={openEntry}
                     onContextMenu={(event) => {
                       event.preventDefault();
-                      setContextMenu({ file, x: event.clientX, y: event.clientY });
+                      setContextMenu({
+                        file,
+                        target: "entry",
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -441,7 +472,12 @@ export function FilesView({ server, activeSessionId }: Props) {
                       } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
                         event.preventDefault();
                         const bounds = event.currentTarget.getBoundingClientRect();
-                        setContextMenu({ file, x: bounds.left + 28, y: bounds.top + 24 });
+                        setContextMenu({
+                          file,
+                          target: "entry",
+                          x: bounds.left + 28,
+                          y: bounds.top + 24,
+                        });
                       }
                     }}
                   >
@@ -476,6 +512,7 @@ export function FilesView({ server, activeSessionId }: Props) {
       {contextMenu && (
         <FileContextMenu
           file={contextMenu.file}
+          target={contextMenu.target}
           x={contextMenu.x}
           y={contextMenu.y}
           onAction={handleContextAction}

@@ -40,8 +40,18 @@ const MENU_ITEMS: MenuItem[] = [
   { action: "permissions", label: "修改权限", icon: ShieldCheck },
 ];
 
+const DIRECTORY_MENU_ACTIONS = new Set<RemoteFileAction>([
+  "copyPath",
+  "createDirectory",
+  "createFile",
+]);
+const DIRECTORY_MENU_ITEMS = MENU_ITEMS.filter((item) => (
+  DIRECTORY_MENU_ACTIONS.has(item.action)
+));
+
 interface Props {
   file: RemoteFile;
+  target: "entry" | "directory";
   x: number;
   y: number;
   onAction: (action: RemoteFileAction) => void;
@@ -61,9 +71,12 @@ function unavailableReason(action: RemoteFileAction, file: RemoteFile) {
   return undefined;
 }
 
-export function FileContextMenu({ file, x, y, onAction, onClose }: Props) {
+export function FileContextMenu({ file, target, x, y, onAction, onClose }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
+  const menuItems = target === "directory"
+    ? DIRECTORY_MENU_ITEMS
+    : MENU_ITEMS;
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -120,12 +133,12 @@ export function FileContextMenu({ file, x, y, onAction, onClose }: Props) {
       ref={menuRef}
       className="file-context-menu"
       role="menu"
-      aria-label={`${file.name} 的文件操作`}
+      aria-label={target === "directory" ? "当前目录操作" : `${file.name} 的文件操作`}
       style={{ left: position.x, top: position.y }}
       onContextMenu={(event) => event.preventDefault()}
       onKeyDown={handleKeyDown}
     >
-      {MENU_ITEMS.map((item) => {
+      {menuItems.map((item) => {
         const Icon = item.icon;
         const disabledReason = unavailableReason(item.action, file);
         return (

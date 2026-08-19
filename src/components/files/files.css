@@ -80,6 +80,9 @@
 
 .file-list[aria-busy="true"] {
   opacity: 0.65;
+}
+
+.file-list[aria-busy="true"] .file-item {
   pointer-events: none;
 }
 
