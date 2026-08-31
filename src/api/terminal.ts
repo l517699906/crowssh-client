@@ -2,6 +2,7 @@
  * SSH 终端操作 API
  */
 import { get, post } from "./request";
+import { buildRequestUrl } from "./config";
 
 const BASE = "/api/v1/ssh/terminal";
 
@@ -41,6 +42,21 @@ export interface TerminalResizePayload {
   rows: number;
 }
 
+export interface TerminalWebSocketTicketResponse {
+  ticket: string;
+  expiresInSeconds: number;
+}
+
+export class TerminalWebSocketTicketError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TerminalWebSocketTicketError";
+  }
+}
+
 export function openTerminal(payload: TerminalOpenPayload) {
   return post<TerminalOpenResponse>(`${BASE}/open`, payload);
 }
@@ -63,4 +79,21 @@ export function resizeTerminal(payload: TerminalResizePayload) {
 
 export function closeTerminal(sessionId: string) {
   return post<void>(`${BASE}/close`, undefined, { sessionId });
+}
+
+export async function createTerminalWebSocket(sessionId: string, resumeAfter: number) {
+  const response = await post<TerminalWebSocketTicketResponse>(`${BASE}/ws-ticket`, {
+    sessionId,
+    resumeAfter,
+  });
+  if (response.code !== "0000" || !response.data?.ticket) {
+    throw new TerminalWebSocketTicketError(
+      response.code,
+      response.info || "无法获取终端连接票据",
+    );
+  }
+
+  const url = new URL(buildRequestUrl(`${BASE}/ws`));
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return new WebSocket(url, ["crowssh-terminal", response.data.ticket]);
 }

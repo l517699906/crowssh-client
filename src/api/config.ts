@@ -1,4 +1,6 @@
 const DEFAULT_API_BASE_URL = "http://154.8.163.87";
+const ALLOW_INSECURE_HTTP =
+  import.meta.env.VITE_CROWSSH_ALLOW_INSECURE_HTTP === "true";
 
 function resolveApiBaseUrl(): string {
   const configured = import.meta.env.VITE_CROWSSH_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
@@ -10,7 +12,7 @@ function resolveApiBaseUrl(): string {
   if (url.pathname !== "/" && url.pathname !== "") {
     throw new Error("CrowSSH API 地址只能配置源站，不能包含路径");
   }
-  if (import.meta.env.PROD && url.protocol !== "https:") {
+  if (import.meta.env.PROD && url.protocol !== "https:" && !ALLOW_INSECURE_HTTP) {
     throw new Error("CrowSSH 生产构建只允许使用 HTTPS API 地址");
   }
 

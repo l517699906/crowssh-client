@@ -125,7 +125,7 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
               className="icon-btn"
               type="button"
               title="断开连接"
-              disabled={activeSession.status !== "connected"}
+              disabled={!activeSession.backendSessionId || canReconnect}
               onClick={() => void handleDisconnect(activeSession)}
             >
               <PlugZap size={15} />

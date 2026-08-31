@@ -5,11 +5,21 @@ import "@xterm/xterm/css/xterm.css";
 import * as sshApi from "../../api/sshConnection";
 import {
   closeTerminal,
-  openTerminal,
+  createTerminalWebSocket,
   readOutput,
+  openTerminal,
   resizeTerminal,
+  TerminalWebSocketTicketError,
   writeInput,
 } from "../../api/terminal";
+import {
+  parseTerminalServerFrame,
+  terminalAckFrame,
+  terminalHeartbeatFrame,
+  terminalInputFrame,
+  terminalResizeFrame,
+} from "../../api/terminalWebSocketProtocol";
+import { recordTerminalDiagnostic } from "../../lib/terminalDiagnostics";
 import type { ServerConfig, SessionStatus, TerminalSession } from "../../types";
 import { useThemeStore } from "../../store/themeStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
@@ -17,10 +27,14 @@ import { buildXtermTheme } from "../../theme/themes";
 import { installTerminalEnhancements } from "./terminalEnhancements";
 import type { TerminalEnhancements } from "./terminalEnhancements";
 
-const POLL_INTERVAL = 50;
-const POLL_ERROR_THRESHOLD = 3;
 const INPUT_FLUSH_DELAY = 10;
 const RESIZE_DELAY = 300;
+const RECONNECT_BASE_DELAY = 500;
+const RECONNECT_MAX_DELAY = 10_000;
+const HEARTBEAT_INTERVAL = 10_000;
+const HEARTBEAT_TIMEOUT = 30_000;
+const WS_FALLBACK_ATTEMPTS = 3;
+const HTTP_POLL_INTERVAL = 50;
 const DISCONNECT_MARKER = "[连接已断开]";
 
 interface Props {
@@ -61,7 +75,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
   const fitRef = useRef<FitAddon | null>(null);
   const enhancementsRef = useRef<TerminalEnhancements | null>(null);
   const backendSessionIdRef = useRef<string | null>(null);
+  const webSocketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputBufferRef = useRef<string[]>([]);
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,15 +86,20 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
   const lifecycleRef = useRef(0);
   const disconnectConnectionOnDisposeRef = useRef(disconnectConnectionOnDispose);
   const stoppedRef = useRef(false);
+  const httpFallbackRef = useRef(false);
   const manuallyDisconnectedRef = useRef(false);
   const termTokens = useThemeStore((state) => state.tokens.terminal);
   disconnectConnectionOnDisposeRef.current = disconnectConnectionOnDispose;
 
   const stopTimers = () => {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
     if (inputTimerRef.current) clearTimeout(inputTimerRef.current);
     if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
+    reconnectTimerRef.current = null;
     pollTimerRef.current = null;
+    heartbeatTimerRef.current = null;
     inputTimerRef.current = null;
     resizeTimerRef.current = null;
     inputBufferRef.current = [];
@@ -86,8 +108,19 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
   const disconnect = async (disconnectConnection = disconnectConnectionOnDisposeRef.current) => {
     stoppedRef.current = true;
     stopTimers();
+    const webSocket = webSocketRef.current;
+    webSocketRef.current = null;
+    if (webSocket && webSocket.readyState < WebSocket.CLOSING) {
+      webSocket.close(1000, "manual disconnect");
+    }
 
     const backendSessionId = backendSessionIdRef.current;
+    recordTerminalDiagnostic({
+      event: "terminal_manual_disconnect",
+      frontendSessionId: session.id,
+      backendSessionId: backendSessionId ?? undefined,
+      details: { disconnectConnection },
+    });
     backendSessionIdRef.current = null;
     setBackendSessionId(session.id, undefined);
     const closeResponse = backendSessionId
@@ -155,57 +188,236 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     enhancementsRef.current = installTerminalEnhancements(term);
     lastSizeRef.current = { cols: term.cols, rows: term.rows };
 
+    const diagnostic = (
+      event: string,
+      details?: Record<string, string | number | boolean | null | undefined>,
+    ) => {
+      recordTerminalDiagnostic({
+        event,
+        frontendSessionId: session.id,
+        backendSessionId: backendSessionIdRef.current ?? undefined,
+        details,
+      });
+    };
+
     const markDisconnected = (message: string) => {
       if (stoppedRef.current) return;
+      diagnostic("terminal_disconnected", { message });
       stoppedRef.current = true;
       stopTimers();
+      const webSocket = webSocketRef.current;
+      webSocketRef.current = null;
+      if (webSocket && webSocket.readyState < WebSocket.CLOSING) {
+        webSocket.close(1000, "terminal disconnected");
+      }
+      const backendSessionId = backendSessionIdRef.current;
+      backendSessionIdRef.current = null;
+      if (backendSessionId) void closeTerminal(backendSessionId);
       setBackendSessionId(session.id, undefined);
       setStatus(session.id, "disconnected");
       term.write(`\r\n\x1b[33m[${message}]\x1b[0m\r\n`);
       if (disconnectConnectionOnDisposeRef.current) void sshApi.disconnect(server.id);
     };
 
-    let pollErrors = 0;
-    const poll = async () => {
-      if (stoppedRef.current || !backendSessionIdRef.current) return;
-      const response = await readOutput(backendSessionIdRef.current);
-      if (stoppedRef.current) return;
+    let reconnectAttempt = 0;
+    let lastServerSeq = 0;
+    let clientSeq = 0;
+    let lastReceivedAt = Date.now();
+    let terminalPermanentlyClosed = false;
+    let reconnectNoticeShown = false;
+    let hasConnected = false;
+    let httpFallback = false;
+    httpFallbackRef.current = false;
+    let connectSocket: () => Promise<void>;
 
-      if (response.code === "0000") {
-        pollErrors = 0;
-        const output = response.data?.output;
-        if (output?.includes(DISCONNECT_MARKER)) {
-          markDisconnected("连接已断开");
-          return;
-        }
-        if (output) term.write(output);
-      } else if (
-        response.code === "ILLEGAL_PARAMETER" &&
-        response.info?.includes("不存在")
-      ) {
-        markDisconnected("会话已失效");
-        return;
-      } else {
-        pollErrors += 1;
-        if (pollErrors >= POLL_ERROR_THRESHOLD) {
-          markDisconnected(response.code === "NETWORK_ERROR" ? "网络异常" : "连接异常");
-          return;
-        }
+    const startHttpFallback = () => {
+      if (httpFallback || stoppedRef.current) return;
+      httpFallback = true;
+      httpFallbackRef.current = true;
+      reconnectNoticeShown = false;
+      setStatus(session.id, "connected");
+      diagnostic("ws_fallback_http", { attempts: reconnectAttempt });
+      term.write("\r\n\x1b[33m[WebSocket 不可用，已切换 HTTP 兼容模式]\x1b[0m\r\n");
+      if (!hasConnected) {
+        hasConnected = true;
+        onConnected();
       }
+      const poll = async () => {
+        if (stoppedRef.current || !httpFallback || !backendSessionIdRef.current) return;
+        try {
+          const response = await readOutput(backendSessionIdRef.current);
+          if (response.code === "0000" && response.data?.output) term.write(response.data.output);
+          else if (response.code === "ILLEGAL_PARAMETER") {
+            markDisconnected("会话已失效");
+            return;
+          }
+        } catch (reason) {
+          diagnostic("http_poll_error", { message: reason instanceof Error ? reason.message : String(reason) });
+        }
+        pollTimerRef.current = setTimeout(() => void poll(), HTTP_POLL_INTERVAL);
+      };
+      void poll();
+    };
 
-      pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
+    const scheduleReconnect = (reason: string) => {
+      if (stoppedRef.current || terminalPermanentlyClosed || reconnectTimerRef.current) return;
+      if (reconnectAttempt >= WS_FALLBACK_ATTEMPTS) {
+        startHttpFallback();
+        return;
+      }
+      const delay = Math.min(
+        RECONNECT_BASE_DELAY * 2 ** reconnectAttempt,
+        RECONNECT_MAX_DELAY,
+      );
+      reconnectAttempt += 1;
+      setStatus(session.id, "connecting");
+      diagnostic("ws_reconnect_scheduled", { attempt: reconnectAttempt, delay, reason });
+      if (!reconnectNoticeShown) {
+        reconnectNoticeShown = true;
+        term.write("\r\n\x1b[33m[连接中断，正在自动重连...]\x1b[0m\r\n");
+      }
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        void connectSocket();
+      }, delay);
+    };
+
+    connectSocket = async () => {
+      const backendSessionId = backendSessionIdRef.current;
+      if (!backendSessionId || stoppedRef.current) return;
+      try {
+        diagnostic("ws_connecting", { attempt: reconnectAttempt, resumeAfter: lastServerSeq });
+        const webSocket = await createTerminalWebSocket(backendSessionId, lastServerSeq);
+        if (!isCurrentLifecycle() || stoppedRef.current) {
+          webSocket.close(1000, "stale lifecycle");
+          return;
+        }
+        webSocketRef.current = webSocket;
+
+        webSocket.onopen = () => {
+          lastReceivedAt = Date.now();
+          diagnostic("ws_open", { attempt: reconnectAttempt });
+        };
+        webSocket.onmessage = (message) => {
+          if (webSocketRef.current !== webSocket || stoppedRef.current) return;
+          lastReceivedAt = Date.now();
+          const frame = parseTerminalServerFrame(String(message.data));
+          if (!frame) {
+            diagnostic("ws_invalid_server_frame");
+            return;
+          }
+
+          switch (frame.type) {
+            case "ready":
+              reconnectAttempt = 0;
+              reconnectNoticeShown = false;
+              setStatus(session.id, "connected");
+              diagnostic("ws_ready", {
+                serverSeq: frame.serverSeq,
+                replayTruncated: frame.replayTruncated,
+              });
+              if (frame.replayTruncated) {
+                term.write("\r\n\x1b[33m[断线期间部分历史输出已超出重放缓冲]\x1b[0m\r\n");
+              }
+              if (!hasConnected) {
+                hasConnected = true;
+                onConnected();
+              }
+              if (term.cols > 0 && term.rows > 0) {
+                webSocket.send(terminalResizeFrame(term.cols, term.rows));
+              }
+              flushInput();
+              term.focus();
+              break;
+            case "output":
+              if (frame.serverSeq <= lastServerSeq) {
+                webSocket.send(terminalAckFrame(lastServerSeq));
+                break;
+              }
+              if (lastServerSeq > 0 && frame.serverSeq !== lastServerSeq + 1) {
+                diagnostic("ws_output_gap", {
+                  expected: lastServerSeq + 1,
+                  received: frame.serverSeq,
+                });
+              }
+              lastServerSeq = frame.serverSeq;
+              if (frame.data.includes(DISCONNECT_MARKER)) {
+                terminalPermanentlyClosed = true;
+                markDisconnected("连接已断开");
+                return;
+              }
+              term.write(frame.data);
+              webSocket.send(terminalAckFrame(lastServerSeq));
+              break;
+            case "ping":
+              webSocket.send(terminalHeartbeatFrame("pong", frame.timestamp));
+              break;
+            case "pong":
+            case "input_ack":
+              break;
+            case "error":
+              diagnostic("ws_server_error", { code: frame.code, message: frame.message });
+              term.write(`\r\n\x1b[31m终端通信异常: ${frame.message}\x1b[0m\r\n`);
+              break;
+            case "terminal_closed":
+              terminalPermanentlyClosed = true;
+              markDisconnected(frame.message || "会话已失效");
+              break;
+          }
+        };
+        webSocket.onerror = () => {
+          diagnostic("ws_transport_error", { readyState: webSocket.readyState });
+        };
+        webSocket.onclose = (event) => {
+          if (webSocketRef.current !== webSocket) return;
+          webSocketRef.current = null;
+          diagnostic("ws_closed", {
+            code: event.code,
+            reason: event.reason || "none",
+            clean: event.wasClean,
+          });
+          if (stoppedRef.current || terminalPermanentlyClosed) return;
+          if (event.code === 4002) {
+            terminalPermanentlyClosed = true;
+            markDisconnected("会话已失效");
+            return;
+          }
+          scheduleReconnect(`close:${event.code}`);
+        };
+      } catch (reason) {
+        if (!isCurrentLifecycle() || stoppedRef.current) return;
+        const message = reason instanceof Error ? reason.message : String(reason);
+        const code = reason instanceof TerminalWebSocketTicketError ? reason.code : "UNKNOWN";
+        diagnostic("ws_ticket_error", { code, message });
+        if (code === "ILLEGAL_PARAMETER") {
+          terminalPermanentlyClosed = true;
+          markDisconnected("会话已失效");
+          return;
+        }
+        scheduleReconnect(`ticket:${code}`);
+      }
     };
 
     const flushInput = async () => {
       inputTimerRef.current = null;
       const input = inputBufferRef.current.join("");
+      const webSocket = webSocketRef.current;
+      if (!input || stoppedRef.current) return;
+      if (httpFallback) {
+        inputBufferRef.current = [];
+        const response = await writeInput({ sessionId: backendSessionIdRef.current!, input });
+        if (response.code !== "0000") inputBufferRef.current.unshift(input);
+        return;
+      }
+      if (webSocket?.readyState !== WebSocket.OPEN) return;
       inputBufferRef.current = [];
-      const backendSessionId = backendSessionIdRef.current;
-      if (!input || !backendSessionId || stoppedRef.current) return;
-
-      const response = await writeInput({ sessionId: backendSessionId, input });
-      if (response.code !== "0000" && !stoppedRef.current) {
-        term.write(`\r\n\x1b[31m输入发送失败: ${response.info || "未知错误"}\x1b[0m\r\n`);
+      try {
+        webSocket.send(terminalInputFrame(++clientSeq, input));
+      } catch (reason) {
+        inputBufferRef.current.unshift(input);
+        diagnostic("ws_input_send_error", {
+          error: reason instanceof Error ? reason.message : String(reason),
+        });
       }
     };
 
@@ -222,8 +434,8 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
 
     const sendResize = () => {
       resizeTimerRef.current = null;
-      const backendSessionId = backendSessionIdRef.current;
-      if (!backendSessionId || stoppedRef.current) return;
+      const webSocket = webSocketRef.current;
+      if (stoppedRef.current) return;
       try {
         fit.fit();
         const nextSize = { cols: term.cols, rows: term.rows };
@@ -236,7 +448,11 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
           return;
         }
         lastSizeRef.current = nextSize;
-        void resizeTerminal({ sessionId: backendSessionId, ...nextSize });
+        if (httpFallback) {
+          void resizeTerminal({ sessionId: backendSessionIdRef.current!, ...nextSize });
+        } else if (webSocket?.readyState === WebSocket.OPEN) {
+          webSocket.send(terminalResizeFrame(nextSize.cols, nextSize.rows));
+        }
       } catch {
         // 容器不可见时 xterm 可能无法计算尺寸。
       }
@@ -292,16 +508,26 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         backendSessionIdRef.current = openResponse.data.sessionId;
         setBackendSessionId(session.id, openResponse.data.sessionId);
         if (openResponse.data.initialOutput) term.write(openResponse.data.initialOutput);
-        setStatus(session.id, "connected");
-        onConnected();
-        pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
-        term.focus();
+        diagnostic("terminal_opened", { connectionId: server.id });
+        heartbeatTimerRef.current = setInterval(() => {
+          const webSocket = webSocketRef.current;
+          if (webSocket?.readyState !== WebSocket.OPEN) return;
+          const silence = Date.now() - lastReceivedAt;
+          if (silence >= HEARTBEAT_TIMEOUT) {
+            diagnostic("ws_heartbeat_timeout", { silence });
+            webSocket.close(4000, "heartbeat timeout");
+            return;
+          }
+          webSocket.send(terminalHeartbeatFrame("ping", Date.now()));
+        }, HEARTBEAT_INTERVAL);
+        await connectSocket();
       } catch (reason) {
         if (!isCurrentLifecycle() || stoppedRef.current) return;
         stoppedRef.current = true;
         stopTimers();
         setBackendSessionId(session.id, undefined);
         const message = reason instanceof Error ? reason.message : String(reason);
+        diagnostic("terminal_connect_error", { message });
         setStatus(session.id, "error", message);
         term.write(`\r\n\x1b[31m连接失败: ${message}\x1b[0m\r\n`);
         if (disconnectConnectionOnDisposeRef.current) void sshApi.disconnect(server.id);
@@ -316,12 +542,18 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       clearTimeout(connectTimer);
       stoppedRef.current = true;
       stopTimers();
+      const webSocket = webSocketRef.current;
+      webSocketRef.current = null;
+      if (webSocket && webSocket.readyState < WebSocket.CLOSING) {
+        webSocket.close(1000, "component disposed");
+      }
       dataDisposable.dispose();
       scrollDisposable.dispose();
       enhancementsRef.current?.dispose();
       resizeObserver.disconnect();
 
       const backendSessionId = backendSessionIdRef.current;
+      diagnostic("terminal_component_disposed");
       backendSessionIdRef.current = null;
       setBackendSessionId(session.id, undefined);
       if (!manuallyDisconnectedRef.current) {
@@ -347,17 +579,21 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
         const viewportLine =
           useWorkspaceStore.getState().workspaces[session.id]?.terminalViewportLine ?? 0;
         term.scrollToLine(viewportLine);
-        const backendSessionId = backendSessionIdRef.current;
+        const webSocket = webSocketRef.current;
         const nextSize = { cols: term.cols, rows: term.rows };
         if (
-          backendSessionId &&
+          (webSocket?.readyState === WebSocket.OPEN || httpFallbackRef.current) &&
           nextSize.cols > 0 &&
           nextSize.rows > 0 &&
           (nextSize.cols !== lastSizeRef.current.cols ||
             nextSize.rows !== lastSizeRef.current.rows)
         ) {
           lastSizeRef.current = nextSize;
-          void resizeTerminal({ sessionId: backendSessionId, ...nextSize });
+          if (httpFallbackRef.current) {
+            void resizeTerminal({ sessionId: backendSessionIdRef.current!, ...nextSize });
+          } else {
+            webSocket?.send(terminalResizeFrame(nextSize.cols, nextSize.rows));
+          }
         }
         term.focus();
       } catch {
