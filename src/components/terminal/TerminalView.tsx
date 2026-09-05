@@ -224,7 +224,6 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
     let clientSeq = 0;
     let lastReceivedAt = Date.now();
     let terminalPermanentlyClosed = false;
-    let reconnectNoticeShown = false;
     let hasConnected = false;
     let httpFallback = false;
     httpFallbackRef.current = false;
@@ -234,25 +233,27 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       if (httpFallback || stoppedRef.current) return;
       httpFallback = true;
       httpFallbackRef.current = true;
-      reconnectNoticeShown = false;
-      setStatus(session.id, "connected");
+      // HTTP 兼容模式只是传输层降级，必须等首次轮询成功后才能确认服务端仍可用。
+      setStatus(session.id, "connecting");
       diagnostic("ws_fallback_http", { attempts: reconnectAttempt });
-      term.write("\r\n\x1b[33m[WebSocket 不可用，已切换 HTTP 兼容模式]\x1b[0m\r\n");
-      if (!hasConnected) {
-        hasConnected = true;
-        onConnected();
-      }
       const poll = async () => {
         if (stoppedRef.current || !httpFallback || !backendSessionIdRef.current) return;
         try {
           const response = await readOutput(backendSessionIdRef.current);
-          if (response.code === "0000" && response.data?.output) term.write(response.data.output);
-          else if (response.code === "ILLEGAL_PARAMETER") {
-            markDisconnected("会话已失效");
+          if (response.code !== "0000") {
+            markDisconnected(response.info || "服务端连接已断开");
             return;
           }
+          setStatus(session.id, "connected");
+          if (!hasConnected) {
+            hasConnected = true;
+            onConnected();
+          }
+          if (response.data?.output) term.write(response.data.output);
         } catch (reason) {
           diagnostic("http_poll_error", { message: reason instanceof Error ? reason.message : String(reason) });
+          markDisconnected("服务端连接已断开，请重新连接");
+          return;
         }
         pollTimerRef.current = setTimeout(() => void poll(), HTTP_POLL_INTERVAL);
       };
@@ -272,10 +273,6 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       reconnectAttempt += 1;
       setStatus(session.id, "connecting");
       diagnostic("ws_reconnect_scheduled", { attempt: reconnectAttempt, delay, reason });
-      if (!reconnectNoticeShown) {
-        reconnectNoticeShown = true;
-        term.write("\r\n\x1b[33m[连接中断，正在自动重连...]\x1b[0m\r\n");
-      }
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null;
         void connectSocket();
@@ -310,7 +307,6 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
           switch (frame.type) {
             case "ready":
               reconnectAttempt = 0;
-              reconnectNoticeShown = false;
               setStatus(session.id, "connected");
               diagnostic("ws_ready", {
                 serverSeq: frame.serverSeq,
@@ -406,7 +402,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, Props>(function Termi
       if (httpFallback) {
         inputBufferRef.current = [];
         const response = await writeInput({ sessionId: backendSessionIdRef.current!, input });
-        if (response.code !== "0000") inputBufferRef.current.unshift(input);
+        if (response.code !== "0000") {
+          inputBufferRef.current.unshift(input);
+          markDisconnected(response.info || "服务端连接已断开，请重新连接");
+        }
         return;
       }
       if (webSocket?.readyState !== WebSocket.OPEN) return;

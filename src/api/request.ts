@@ -93,21 +93,30 @@ export function postWithTimeout<T>(path: string, body: unknown, timeoutMs: numbe
 
 /** 发起不设短超时的流式 POST 请求，由调用方负责读取响应体和取消请求。 */
 export async function postStream(path: string, body: unknown, signal?: AbortSignal) {
-    const res = await fetchWithDeviceAuthorization(buildRequestUrl(path), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal,
-    })
+    try {
+        const res = await fetchWithDeviceAuthorization(buildRequestUrl(path), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal,
+        })
 
-    if (!res.ok) {
-        throw new Error(res.statusText || `请求失败 (${res.status})`)
-    }
-    if (!res.body) {
-        throw new Error('服务端未返回流式响应')
-    }
+        if (!res.ok) {
+            throw new Error(res.statusText || `服务端暂时不可用 (${res.status})`)
+        }
+        if (!res.body) {
+            throw new Error('服务端未返回流式响应')
+        }
 
-    return res
+        return res
+    } catch (err: any) {
+        if (err?.name === 'AbortError') throw err
+        // fetch 在服务端重部署、网络断开时通常只抛出无上下文的 TypeError。
+        if (err instanceof TypeError || err?.message === 'Failed to fetch') {
+            throw new Error('无法连接 CrowSSH 服务，请确认服务端正在运行')
+        }
+        throw err
+    }
 }
 
 /** PUT 请求 */
