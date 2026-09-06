@@ -108,6 +108,7 @@ function parseConversation(value: unknown): Conversation | null {
     serverId: item.serverId,
     serverLabel: item.serverLabel,
     serverSessionId: item.serverSessionId,
+    terminalSessionId: item.terminalSessionId,
     modelSelection: parseModelSelection(item.modelSelection),
     turns,
     createdAt: item.createdAt,

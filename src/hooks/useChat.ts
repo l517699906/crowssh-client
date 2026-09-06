@@ -304,6 +304,14 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
       const model = resolveConversationModel(activeProfile, conversation.modelSelection);
 
       let sessionId = conversation.serverSessionId;
+      if (sessionId && conversation.terminalSessionId !== terminal.backendSessionId) {
+        // 终端重连会产生新的后端会话，旧 AI 会话不可再操作新终端。
+        sessionId = undefined;
+        useChatStore.getState().dispatch({
+          type: "clear_session",
+          conversationId: conversation.id,
+        });
+      }
       if (!sessionId) {
         const sessionResponse = await agentApi.createSession(
           conversation.agentId,
@@ -318,6 +326,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
           type: "set_session",
           conversationId: conversation.id,
           sessionId,
+          terminalSessionId: terminal.backendSessionId,
         });
       }
 
@@ -347,6 +356,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
             type: "set_session",
             conversationId: conversation.id,
             sessionId,
+            terminalSessionId: terminal.backendSessionId,
           });
         }
         const eventTime = event.timestamp ?? Date.now();

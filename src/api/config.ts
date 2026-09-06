@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = "http://154.8.163.87";
+const DEFAULT_API_BASE_URL = "https://www.crowssh.top";
 const ALLOW_INSECURE_HTTP =
   import.meta.env.VITE_CROWSSH_ALLOW_INSECURE_HTTP === "true";
 

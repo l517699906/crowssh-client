@@ -17,7 +17,12 @@ export type ConversationAction =
       conversationId: string;
       selection?: Conversation["modelSelection"];
     }
-  | { type: "set_session"; conversationId: string; sessionId: string }
+  | {
+      type: "set_session";
+      conversationId: string;
+      sessionId: string;
+      terminalSessionId: string;
+    }
   | { type: "clear_session"; conversationId: string }
   | { type: "start_turn"; conversationId: string; turn: ChatTurn }
   | {
@@ -107,6 +112,7 @@ function reduceConversations(
       return conversations.map((conversation) => ({
         ...conversation,
         serverSessionId: undefined,
+        terminalSessionId: undefined,
       }));
     case "set_agent":
       return conversations.map((conversation) =>
@@ -115,6 +121,7 @@ function reduceConversations(
               ...conversation,
               agentId: action.agentId,
               serverSessionId: undefined,
+              terminalSessionId: undefined,
               updatedAt: Date.now(),
             }
           : conversation,
@@ -132,13 +139,21 @@ function reduceConversations(
     case "set_session":
       return conversations.map((conversation) =>
         conversation.id === action.conversationId
-          ? { ...conversation, serverSessionId: action.sessionId }
+          ? {
+              ...conversation,
+              serverSessionId: action.sessionId,
+              terminalSessionId: action.terminalSessionId,
+            }
           : conversation,
       );
     case "clear_session":
       return conversations.map((conversation) =>
         conversation.id === action.conversationId
-          ? { ...conversation, serverSessionId: undefined }
+          ? {
+              ...conversation,
+              serverSessionId: undefined,
+              terminalSessionId: undefined,
+            }
           : conversation,
       );
     case "start_turn":
@@ -301,6 +316,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
               ...conversation,
               agentId: fallbackAgentId,
               serverSessionId: undefined,
+              terminalSessionId: undefined,
             },
       ),
     }));

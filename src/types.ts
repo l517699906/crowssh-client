@@ -128,6 +128,8 @@ export interface Conversation {
   serverId: string;
   serverLabel: string;
   serverSessionId?: string;
+  // 与 serverSessionId 同时创建的服务端终端会话；终端重连后会变化。
+  terminalSessionId?: string;
   modelSelection?: ChatModelSelection;
   turns: ChatTurn[];
   createdAt: number;
