@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { load, save } from "../lib/storage";
 
-export type ActivityView = "servers" | "files";
+export type ActivityView = "servers" | "files" | "databases";
 export type LayoutPane = "left" | "terminal" | "right";
 const KEY = "layout.state";
 

@@ -12,20 +12,23 @@ export interface AiAgentConfigDTO {
   agentId: string;
   agentName: string;
   agentDesc: string;
+  resourceKind?: 'SSH' | 'DB';
 }
 
 interface CreateSessionDTO {
   sessionId: string;
 }
 
-export interface ChatStreamPayload {
+interface ChatStreamBase {
   agentId: string;
   sessionId: string;
   message: string;
-  connectionId: string;
-  terminalSessionId?: string;
   runtimeModel: RuntimeModelConfig;
 }
+export type ChatStreamPayload = ChatStreamBase & (
+  | { connectionId: string; terminalSessionId: string; dbConnectionId?: never; dbSessionId?: never }
+  | { dbConnectionId: string; dbSessionId: string; supportsDbApproval: true; connectionId?: never; terminalSessionId?: never }
+);
 
 export type CommandApprovalDecision = "approve" | "deny";
 
@@ -58,6 +61,22 @@ export function decideCommandApproval(
 
 export function cancelChatStream(sessionId: string, terminalSessionId: string) {
   return post<void>("/api/v1/chat_stream/cancel", { sessionId, terminalSessionId });
+}
+
+export function createDatabaseSession(agentId: string, dbConnectionId: string, dbSessionId: string) {
+  return post<CreateSessionDTO>('/api/v1/create_session', { agentId, dbConnectionId, dbSessionId });
+}
+
+export interface ChatCancelResult {
+  streamState: 'CANCEL_REQUESTED' | 'NOT_ACTIVE';
+  executions: { executionId: string; state: import('../types/database').DbExecutionState; outcome: import('../types/database').DbOutcome | null; cancelRequested: boolean }[];
+}
+export function cancelDatabaseChatStream(sessionId: string, dbSessionId: string, turnId: string) {
+  return post<ChatCancelResult>('/api/v1/chat_stream/cancel', { sessionId, dbSessionId, turnId });
+}
+
+export function decideDatabaseApproval(approvalId: string, sessionId: string, turnId: string, decision: CommandApprovalDecision) {
+  return post<string>(`/api/v1/db/approvals/${encodeURIComponent(approvalId)}/decision`, { sessionId, turnId, decision });
 }
 
 export async function* streamChatMessage(

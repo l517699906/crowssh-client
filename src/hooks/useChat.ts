@@ -4,14 +4,16 @@ import type {
   AssistantTextItem,
   ChatModelSelection,
   ChatTurn,
-  ServerConfig,
-  TerminalSession,
+  ChatTarget,
   ToolTranscriptItem,
   TranscriptExecutionStatus,
 } from "../types";
+import { conversationMatchesTarget, describeChatTarget, snapshotMatchesDatabaseTarget } from "../lib/chatTarget";
+import { useSqlWorkspaceStore } from "../store/sqlWorkspaceStore";
 import * as agentApi from "../api/agent";
 import { readAiSecretForRequest } from "../api/aiSecrets";
 import { initializeChatHistory } from "../lib/chatHistory";
+import { cancelAndObserveDatabaseTurn } from '../services/databaseChatCancellation';
 import { uid } from "../lib/storage";
 import { useAiConfigStore } from "../store/aiConfigStore";
 import { useChatStore } from "../store/chatStore";
@@ -22,9 +24,24 @@ import {
 } from "../types/aiConfig";
 
 const streamControllers = new Map<string, AbortController>();
+const streamBindings = new Map<string, { sessionId?: string; resourceKind: 'SSH' | 'DB'; backendSessionId: string; turnId?: string; stopRequested: boolean }>();
 
 export function abortConversationStream(conversationId: string) {
   streamControllers.get(conversationId)?.abort();
+}
+
+export function stopConversationStream(conversationId: string) {
+  const binding = streamBindings.get(conversationId);
+  if (binding) {
+    binding.stopRequested = true;
+    if (binding.sessionId && binding.resourceKind === 'DB' && binding.turnId) {
+      void cancelAndObserveDatabaseTurn(conversationId, binding.sessionId, binding.backendSessionId, binding.turnId);
+    } else if (binding.sessionId && binding.resourceKind === 'SSH') {
+      void agentApi.cancelChatStream(binding.sessionId, binding.backendSessionId);
+    }
+  }
+  // 数据库初始事件带来服务器轮次后再停止，保证取消使用可信 turnId。
+  if (!binding || binding.resourceKind === 'SSH' || binding.turnId) abortConversationStream(conversationId);
 }
 
 function normalizeResultStatus(status: string): TranscriptExecutionStatus {
@@ -38,11 +55,6 @@ function normalizeResultStatus(status: string): TranscriptExecutionStatus {
     return normalized as TranscriptExecutionStatus;
   }
   return "error";
-}
-
-function displayServerName(server: ServerConfig | undefined, terminal: TerminalSession): string {
-  if (!server) return terminal.title;
-  return server.name || `${server.username}@${server.host}`;
 }
 
 function getAvailableModels(profile: AiProfile): string[] {
@@ -59,7 +71,9 @@ function resolveConversationModel(
     : profile.model;
 }
 
-export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
+export function useChat(target?: ChatTarget) {
+  const resource = describeChatTarget(target);
+  const resourceKind = resource?.resourceKind ?? "SSH";
   const activeProfile = useAiConfigStore((state) =>
     state.profiles.find((profile) => profile.id === state.activeProfileId),
   );
@@ -73,7 +87,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [agentError, setAgentError] = useState<string | null>(null);
 
-  const activeId = terminal ? activeByTerminal[terminal.id] ?? null : null;
+  const activeId = resource ? activeByTerminal[resource.id] ?? null : null;
   const active = conversations.find((item) => item.id === activeId) ?? null;
   const availableModels = useMemo(
     () => (activeProfile ? getAvailableModels(activeProfile) : []),
@@ -83,7 +97,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     ? resolveConversationModel(activeProfile, active?.modelSelection)
     : "";
   const sending = active ? Boolean(runningByConversation[active.id]) : false;
-  const terminalBusyConversationId = terminal ? runningByTerminal[terminal.id] : undefined;
+  const terminalBusyConversationId = resource ? runningByTerminal[resource.id] : undefined;
   const terminalBusy = Boolean(terminalBusyConversationId);
   const error = agentError ?? (active ? errorsByConversation[active.id] : null) ?? null;
 
@@ -104,10 +118,11 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
           setAgentError(response.info || "服务端没有可用智能体");
           return;
         }
-        setAgents(response.data.map((agent) => ({
+        setAgents(response.data.filter((agent) => (agent.resourceKind ?? "SSH") === resourceKind).map((agent) => ({
           id: agent.agentId,
           name: agent.agentName,
           description: agent.agentDesc,
+          resourceKind: agent.resourceKind ?? "SSH",
         })));
       } catch (reason) {
         if (cancelled) return;
@@ -121,48 +136,54 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resourceKind]);
 
   useEffect(() => {
     const firstAgent = agents[0];
-    if (!hydrated || !firstAgent) return;
+    if (!hydrated || !firstAgent || firstAgent.resourceKind !== resourceKind) return;
     useChatStore.getState().reconcileAgents(
       agents.map((agent) => agent.id),
       firstAgent.id,
+      resourceKind,
     );
-  }, [agents, hydrated]);
+  }, [agents, hydrated, resourceKind]);
 
   useEffect(() => {
     const firstAgent = agents[0];
-    if (!hydrated || !firstAgent || !terminal) return;
+    if (!hydrated || !firstAgent || !resource || firstAgent.resourceKind !== resourceKind) return;
     useChatStore.getState().ensureConversation({
       agentId: firstAgent.id,
-      serverId: terminal.serverId,
-      serverLabel: displayServerName(server, terminal),
-      terminalId: terminal.id,
+      serverId: resource.connectionId,
+      serverLabel: resource.label,
+      terminalId: resource.id,
+      resourceKind: resource.resourceKind,
+      dbConnectionId: resource.resourceKind === "DB" ? resource.connectionId : undefined,
     });
-  }, [agents, hydrated, server, terminal]);
+  }, [agents, hydrated, resource?.id, resource?.connectionId, resource?.label, resourceKind]);
 
   const newConversation = useCallback(() => {
     const firstAgent = agents[0];
-    if (!terminal || !firstAgent) return;
+    if (!resource || !firstAgent || firstAgent.resourceKind !== resourceKind) return;
     useChatStore.getState().createConversation({
       agentId: firstAgent.id,
-      serverId: terminal.serverId,
-      serverLabel: displayServerName(server, terminal),
-      terminalId: terminal.id,
+      serverId: resource.connectionId,
+      serverLabel: resource.label,
+      terminalId: resource.id,
+      resourceKind: resource.resourceKind,
+      dbConnectionId: resource.resourceKind === "DB" ? resource.connectionId : undefined,
     });
-  }, [agents, server, terminal]);
+  }, [agents, resource?.id, resource?.connectionId, resource?.label, resourceKind]);
 
   const setActiveConversation = useCallback((conversationId: string) => {
-    if (!terminal) return false;
+    if (!resource) return false;
     const conversation = useChatStore.getState().conversations.find(
       (item) => item.id === conversationId,
     );
-    if (!conversation || conversation.serverId !== terminal.serverId) return false;
-    useChatStore.getState().bindConversation(terminal.id, conversationId);
+    if (!conversation || !conversationMatchesTarget(conversation, target)
+      || useChatStore.getState().runningByConversation[conversationId]) return false;
+    useChatStore.getState().bindConversation(resource.id, conversationId);
     return true;
-  }, [terminal]);
+  }, [target]);
 
   const setModel = useCallback((model: string) => {
     if (!activeId || !activeProfile || !availableModels.includes(model)) return;
@@ -177,16 +198,8 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
 
   const stopMessage = useCallback(() => {
     if (!activeId) return;
-    const state = useChatStore.getState();
-    const conversation = state.conversations.find((item) => item.id === activeId);
-    if (conversation?.serverSessionId && terminal?.backendSessionId) {
-      void agentApi.cancelChatStream(
-        conversation.serverSessionId,
-        terminal.backendSessionId,
-      );
-    }
-    abortConversationStream(activeId);
-  }, [activeId, terminal?.backendSessionId]);
+    stopConversationStream(activeId);
+  }, [activeId]);
 
   const decideCommandApproval = useCallback(async (
     item: ToolTranscriptItem,
@@ -203,6 +216,28 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     if (!conversation?.serverSessionId || !turn) {
       throw new Error("AI 会话已失效，无法提交命令审批");
     }
+
+    if (item.resourceKind?.startsWith('DB')) {
+      const live = target?.kind === 'sql' ? useSqlWorkspaceStore.getState().workspaces[target.dbSession.dbSessionId] : undefined;
+      const binding = streamBindings.get(conversation.id);
+      if (!live || target?.kind !== 'sql' || !item.databaseApproval || !item.resourceSnapshot
+        || !item.serverTurnId || binding?.turnId !== item.serverTurnId || binding.stopRequested
+        || !state.runningByConversation[conversation.id] || live.session.lifecycleStatus !== 'READY'
+        || !snapshotMatchesDatabaseTarget(item.resourceSnapshot, { ...target, dbSession: live.session })
+        || !Number.isFinite(Date.parse(item.databaseApproval.expiresAt))
+        || Date.parse(item.databaseApproval.expiresAt) <= Date.now()) throw new Error('数据库审批已失效，请在当前目标重新发起请求');
+      const response = await agentApi.decideDatabaseApproval(item.approvalId, conversation.serverSessionId, item.serverTurnId, decision);
+      if (response.code !== '0000') throw new Error(response.info || '数据库审批提交失败');
+      const latest = useChatStore.getState().conversations.find((entry) => entry.id === conversation.id)
+        ?.turns.find((entry) => entry.id === turn.id)?.items.find((entry) => entry.id === item.id);
+      // SQL 可能在审批 HTTP 响应到达前完成，不让迟到响应覆盖最终结果。
+      if (latest?.type !== 'tool' || latest.status !== 'approval_required') return;
+      const status = response.data === 'APPROVED' || response.data === 'CONSUMED' ? 'running'
+        : response.data === 'DENIED' ? 'denied' : response.data === 'EXPIRED' ? 'expired' : 'cancelled';
+      state.dispatch({ type: 'upsert_tool', conversationId: conversation.id, turnId: turn.id, item: { ...item, status } });
+      return;
+    }
+    if ((conversation.resourceKind ?? 'SSH') !== 'SSH') throw new Error('审批资源类型不匹配');
 
     const response = await agentApi.decideCommandApproval(
       item.approvalId,
@@ -228,17 +263,17 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
         errorMessage: decision === "deny" ? "用户已拒绝执行该命令。" : undefined,
       },
     });
-  }, [activeId]);
+  }, [activeId, target]);
 
   const sendMessage = useCallback(async (text: string) => {
     const content = text.trim();
-    if (!content || !terminal?.backendSessionId || terminal.status !== "connected") return;
+    if (!content || !resource?.backendSessionId || !resource.ready) return;
 
     const state = useChatStore.getState();
-    const conversationId = state.activeByTerminal[terminal.id];
+    const conversationId = state.activeByTerminal[resource.id];
     const conversation = state.conversations.find((item) => item.id === conversationId);
-    if (!conversation || conversation.serverId !== terminal.serverId) return;
-    if (state.runningByConversation[conversation.id] || state.runningByTerminal[terminal.id]) return;
+    if (!conversation || !conversationMatchesTarget(conversation, target)) return;
+    if (state.runningByConversation[conversation.id] || state.runningByTerminal[resource.id]) return;
 
     const turnId = uid();
     const statusItemId = `${turnId}:status`;
@@ -259,8 +294,12 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     };
 
     state.dispatch({ type: "start_turn", conversationId: conversation.id, turn });
-    state.setRunning(conversation.id, terminal.id, true);
+    state.setRunning(conversation.id, resource.id, true);
     state.setError(conversation.id, null);
+    const streamBinding = { resourceKind, backendSessionId: resource.backendSessionId, stopRequested: false } as {
+      sessionId?: string; resourceKind: 'SSH' | 'DB'; backendSessionId: string; turnId?: string; stopRequested: boolean;
+    };
+    streamBindings.set(conversation.id, streamBinding);
 
     let animationFrameId: number | null = null;
     const pendingText = new Map<string, AssistantTextItem>();
@@ -301,11 +340,12 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
     try {
       if (!activeProfile) throw new Error("请先在设置中配置并启用 AI 模型");
       const apiKey = await readAiSecretForRequest(activeProfile.credentialId);
+      if (streamBinding.stopRequested) throw new DOMException('Stopped', 'AbortError');
       const model = resolveConversationModel(activeProfile, conversation.modelSelection);
 
       let sessionId = conversation.serverSessionId;
-      if (sessionId && conversation.terminalSessionId !== terminal.backendSessionId) {
-        // 终端重连会产生新的后端会话，旧 AI 会话不可再操作新终端。
+      if (sessionId && (resourceKind === "DB" ? conversation.dbSessionId : conversation.terminalSessionId) !== resource.backendSessionId) {
+        // 工作台重新打开会产生新会话，旧聊天绑定不能继承新资源执行权。
         sessionId = undefined;
         useChatStore.getState().dispatch({
           type: "clear_session",
@@ -313,11 +353,9 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
         });
       }
       if (!sessionId) {
-        const sessionResponse = await agentApi.createSession(
-          conversation.agentId,
-          terminal.serverId,
-          terminal.backendSessionId,
-        );
+        const sessionResponse = await (resourceKind === "DB"
+          ? agentApi.createDatabaseSession(conversation.agentId, resource.connectionId, resource.backendSessionId)
+          : agentApi.createSession(conversation.agentId, resource.connectionId, resource.backendSessionId));
         if (sessionResponse.code !== "0000" || !sessionResponse.data?.sessionId) {
           throw new Error(sessionResponse.info || "创建会话失败");
         }
@@ -326,11 +364,13 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
           type: "set_session",
           conversationId: conversation.id,
           sessionId,
-          terminalSessionId: terminal.backendSessionId,
+          ...(resourceKind === "DB" ? { dbSessionId: resource.backendSessionId } : { terminalSessionId: resource.backendSessionId }),
         });
       }
 
       abortController = new AbortController();
+      streamBinding.sessionId = sessionId;
+      if (streamBinding.stopRequested) throw new DOMException('Stopped', 'AbortError');
       streamControllers.set(conversation.id, abortController);
       const toolCalls = new Set<string>();
       let activeTextItemId: string | null = null;
@@ -344,19 +384,26 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
           agentId: conversation.agentId,
           sessionId,
           message: content,
-          connectionId: terminal.serverId,
-          terminalSessionId: terminal.backendSessionId,
+          ...(resourceKind === "DB" ? { dbConnectionId: resource.connectionId, dbSessionId: resource.backendSessionId, supportsDbApproval: true as const }
+            : { connectionId: resource.connectionId, terminalSessionId: resource.backendSessionId }),
           runtimeModel: runtimeModelConfigFromProfile(activeProfile, apiKey, model),
         },
         abortController.signal,
       )) {
+        if (resourceKind === 'DB') {
+          if (!event.turnId || !event.resourceSnapshot || event.sessionId !== sessionId
+            || target?.kind !== 'sql' || !snapshotMatchesDatabaseTarget(event.resourceSnapshot, target)
+            || (streamBinding.turnId && streamBinding.turnId !== event.turnId)) throw new Error('数据库事件目标或轮次不匹配，已停止接收');
+          streamBinding.turnId = event.turnId;
+          if (streamBinding.stopRequested) { stopConversationStream(conversation.id); throw new DOMException('Stopped', 'AbortError'); }
+        }
         if (event.sessionId && event.sessionId !== sessionId) {
           sessionId = event.sessionId;
           useChatStore.getState().dispatch({
             type: "set_session",
             conversationId: conversation.id,
             sessionId,
-            terminalSessionId: terminal.backendSessionId,
+            ...(resourceKind === "DB" ? { dbSessionId: resource.backendSessionId } : { terminalSessionId: resource.backendSessionId }),
           });
         }
         const eventTime = event.timestamp ?? Date.now();
@@ -403,6 +450,11 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
               status: "approval_required",
               approvalId: event.approvalId,
               riskLevel: event.riskLevel,
+              resourceKind: event.resourceKind,
+              serverTurnId: event.turnId,
+              executionId: event.executionId,
+              resourceSnapshot: event.resourceSnapshot,
+              databaseApproval: event.databaseApproval,
               startedAt: event.startedAt ?? eventTime,
               createdAt: eventTime,
             },
@@ -423,6 +475,10 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
               toolName: event.toolName || "executeCommand",
               command: event.command ?? "",
               status: event.status.toLowerCase() === "error" ? "error" : "running",
+              resourceKind: event.resourceKind,
+              serverTurnId: event.turnId,
+              executionId: event.executionId,
+              resourceSnapshot: event.resourceSnapshot,
               startedAt: event.startedAt ?? eventTime,
               createdAt: eventTime,
             },
@@ -447,12 +503,17 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
               toolName: event.toolName ?? "executeCommand",
               command: event.command ?? "",
               status,
+              resourceKind: event.resourceKind,
+              serverTurnId: event.turnId,
+              executionId: event.executionId,
+              resourceSnapshot: event.resourceSnapshot,
+              databaseResult: event.databaseResult,
               startedAt,
               completedAt,
               durationMs: event.durationMs ?? Math.max(0, completedAt - startedAt),
               outputLength: event.outputLength,
               errorMessage: status !== "success"
-                ? event.errorMessage || "命令执行失败，请查看终端输出。"
+                ? event.errorMessage || (resourceKind === 'DB' ? '数据库操作未成功，请查看执行结果。' : "命令执行失败，请查看终端输出。")
                 : undefined,
               createdAt: eventTime,
             },
@@ -477,7 +538,7 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
         queueText(
           activeTextItemId,
           toolCalls.size > 0
-            ? toolFailed
+            ? resourceKind === 'DB' ? '数据库操作已结束，请查看上方执行状态与处理后的结果。' : toolFailed
               ? "命令执行未完成，请查看上方失败状态和终端输出。"
               : "命令执行完成，完整输出已保留在终端中。"
             : "智能体已完成处理，但没有生成文本回复。",
@@ -493,6 +554,9 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
         completedAt: Date.now(),
       });
     } catch (reason) {
+      if (resourceKind === 'DB' && streamBinding.turnId && streamBinding.sessionId) {
+        void cancelAndObserveDatabaseTurn(conversation.id, streamBinding.sessionId, streamBinding.backendSessionId, streamBinding.turnId);
+      }
       flushPendingText();
       const stopped = reason instanceof DOMException && reason.name === "AbortError";
       const message = stopped
@@ -525,9 +589,10 @@ export function useChat(terminal?: TerminalSession, server?: ServerConfig) {
       if (abortController && streamControllers.get(conversation.id) === abortController) {
         streamControllers.delete(conversation.id);
       }
-      useChatStore.getState().setRunning(conversation.id, terminal.id, false);
+      if (streamBindings.get(conversation.id) === streamBinding) streamBindings.delete(conversation.id);
+      useChatStore.getState().setRunning(conversation.id, resource.id, false);
     }
-  }, [activeProfile, terminal]);
+  }, [activeProfile, target]);
 
   return {
     agents,

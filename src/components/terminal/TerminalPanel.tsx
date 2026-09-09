@@ -12,11 +12,12 @@ interface Props {
   terminals: ReturnType<typeof useTerminals>;
   servers: ServerConfig[];
   panelVisible: boolean;
+  showTabs?: boolean;
   onConnectionReady: () => void;
   onHostKeyChallenge: (server: ServerConfig, sessionId: string, challenge: import("../../api/sshConnection").SshHostKeyStatusDTO) => void;
 }
 
-export function TerminalPanel({ terminals, servers, panelVisible, onConnectionReady, onHostKeyChallenge }: Props) {
+export function TerminalPanel({ terminals, servers, panelVisible, showTabs = true, onConnectionReady, onHostKeyChallenge }: Props) {
   const {
     sessions,
     activeId,
@@ -78,7 +79,7 @@ export function TerminalPanel({ terminals, servers, panelVisible, onConnectionRe
 
   return (
     <>
-      {sessions.length > 0 && (
+      {showTabs && sessions.length > 0 && (
         <TerminalTabs
           sessions={sessions}
           activeId={activeId}

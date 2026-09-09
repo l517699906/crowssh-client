@@ -51,7 +51,14 @@ async function request<T>(
         })
 
         if (!res.ok) {
-            return { code: String(res.status), info: res.statusText, data: null }
+            // HTTP/2 的 statusText 可能为空；优先保留服务端业务错误。
+            const failure = await res.json().catch(() => null)
+            return {
+                code: typeof failure?.code === 'string' ? failure.code : String(res.status),
+                info: typeof failure?.info === 'string' && failure.info.trim()
+                    ? failure.info : res.statusText || `请求失败（HTTP ${res.status}）`,
+                data: null,
+            }
         }
 
         return (await res.json()) as ApiResponse<T>

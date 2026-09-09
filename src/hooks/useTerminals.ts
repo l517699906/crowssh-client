@@ -5,10 +5,12 @@ import { uid } from "../lib/storage";
 import { abortConversationStream } from "./useChat";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { useWorkbenchStore } from "../store/workbenchStore";
 
 export function useTerminals() {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeId = useWorkbenchStore((state) => state.activeId);
+  const setActiveId = useWorkbenchStore((state) => state.activate);
 
   const interruptSessionChat = useCallback((id: string) => {
     const chatState = useChatStore.getState();
@@ -52,18 +54,16 @@ export function useTerminals() {
       };
       return [...prev, session];
     });
-    setActiveId(sessionId);
+    useWorkbenchStore.getState().open({ id: sessionId, kind: "terminal" });
   }, []);
 
   const closeSession = useCallback((id: string) => {
     interruptSessionChat(id);
     useChatStore.getState().releaseTerminal(id);
     useWorkspaceStore.getState().removeWorkspace(id);
+    useWorkbenchStore.getState().close(id);
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
-      setActiveId((cur) =>
-        cur === id ? (next.length ? next[next.length - 1].id : null) : cur,
-      );
       return next;
     });
   }, [interruptSessionChat]);

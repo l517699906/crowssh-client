@@ -15,6 +15,13 @@
     "src/api/config.ts",
     "src/api/terminalWebSocketProtocol.ts",
     "src/lib/serverMonitorMetrics.ts",
-    "src/lib/uploadLimits.ts"
+    "src/lib/uploadLimits.ts",
+    "src/lib/sqlStatementSplit.ts",
+    "src/store/workbenchStore.ts",
+    "src/store/sqlWorkspaceStore.ts",
+    "src/lib/chatTarget.ts",
+    "src/lib/chatHistoryPolicy.ts",
+    "src/lib/databaseExecutionMerge.ts",
+    "src/lib/sqlHistoryPolicy.ts"
   ]
 }

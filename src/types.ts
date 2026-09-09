@@ -87,6 +87,12 @@ export interface ToolTranscriptItem extends TranscriptItemBase {
   errorMessage?: string;
   approvalId?: string;
   riskLevel?: string;
+  resourceKind?: 'SSH' | 'DB' | 'DB_SQL' | 'DB_METADATA';
+  serverTurnId?: string;
+  executionId?: string;
+  resourceSnapshot?: import('./types/database').DbResourceSnapshot;
+  databaseApproval?: import('./types/database').DbApprovalDetails;
+  databaseResult?: import('./types/database').DbToolResult;
 }
 
 export interface StatusTranscriptItem extends TranscriptItemBase {
@@ -130,6 +136,9 @@ export interface Conversation {
   serverSessionId?: string;
   // 与 serverSessionId 同时创建的服务端终端会话；终端重连后会变化。
   terminalSessionId?: string;
+  resourceKind?: 'SSH' | 'DB';
+  dbConnectionId?: string;
+  dbSessionId?: string;
   modelSelection?: ChatModelSelection;
   turns: ChatTurn[];
   createdAt: number;
@@ -140,4 +149,9 @@ export interface Agent {
   id: string;
   name: string;
   description: string;
+  resourceKind?: 'SSH' | 'DB';
 }
+
+export type ChatTarget =
+  | { kind: 'terminal'; terminal: TerminalSession; server?: ServerConfig }
+  | { kind: 'sql'; dbSession: import('./types/database').DbSession; dbConnection?: import('./types/database').DbConnectionConfig };

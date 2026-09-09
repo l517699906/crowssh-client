@@ -1,5 +1,5 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import { Folder, Server, Settings } from "lucide-react";
+import { Database, Folder, Server, Settings } from "lucide-react";
 import { useLayoutStore, type ActivityView } from "../../store/layoutStore";
 import { SettingsPopover } from "./SettingsPopover";
 
@@ -10,6 +10,7 @@ const AiSettingsDialog = lazy(() =>
 const ITEMS: { view: ActivityView; icon: typeof Server; label: string }[] = [
   { view: "servers", icon: Server, label: "服务器" },
   { view: "files", icon: Folder, label: "远程文件" },
+  { view: "databases", icon: Database, label: "数据库" },
 ];
 
 const NARROW_LAYOUT_QUERY = "(max-width: 760px)";

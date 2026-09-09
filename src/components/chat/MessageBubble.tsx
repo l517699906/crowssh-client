@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   SquareTerminal,
   X,
+  Database,
 } from "lucide-react";
 import type { CommandApprovalDecision } from "../../api/agent";
 import ReactMarkdown from "react-markdown";
@@ -18,6 +19,8 @@ import type {
   ToolTranscriptItem,
   TranscriptExecutionStatus,
 } from "../../types";
+import { ResultGrid } from '../database/ResultGrid';
+import { useSqlWorkspaceStore } from '../../store/sqlWorkspaceStore';
 
 function formatDuration(durationMs?: number) {
   if (durationMs === undefined) return null;
@@ -90,6 +93,21 @@ function ToolEntry({
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const command = item.command.trim();
   const duration = formatDuration(item.durationMs);
+  const isDatabase = item.resourceKind?.startsWith('DB');
+  const approval = item.databaseApproval;
+  const snapshot = item.resourceSnapshot;
+  const liveSession = useSqlWorkspaceStore((state) => snapshot ? state.workspaces[snapshot.dbSessionId]?.session : undefined);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!approval || item.status !== 'approval_required') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [approval, item.status]);
+  const approvalInvalid = isDatabase && (!approval || !snapshot || !liveSession
+    || !Number.isFinite(Date.parse(approval.expiresAt)) || Date.parse(approval.expiresAt) <= now
+    || liveSession.lifecycleStatus !== 'READY' || liveSession.configVersion !== snapshot.configVersion
+    || liveSession.sessionGeneration !== snapshot.sessionGeneration
+    || liveSession.targetContextVersion !== snapshot.targetContextVersion);
   const statusLabel = {
     approval_required: "等待确认",
     running: "执行中",
@@ -128,10 +146,10 @@ function ToolEntry({
         className="tool-entry-toggle"
         aria-expanded={expanded}
         title={command ? "展开命令详情" : statusLabel}
-        disabled={!command}
+        disabled={!command && !isDatabase}
         onClick={() => setExpanded((current) => !current)}
       >
-        <SquareTerminal size={14} aria-hidden="true" />
+        {isDatabase ? <Database size={14} aria-hidden="true" /> : <SquareTerminal size={14} aria-hidden="true" />}
         <span className="tool-status-label">{statusLabel}</span>
         <span className="tool-command-summary">{command || item.toolName}</span>
         {duration && <span className="tool-duration">{duration}</span>}
@@ -153,12 +171,34 @@ function ToolEntry({
         </div>
       )}
 
+      {isDatabase && (showDetail || item.databaseResult) && <div className="tool-command-detail">
+        <p>目标库：{snapshot?.targetDatabase ?? item.databaseResult?.targetDatabase ?? '未选择'} · 执行 ID：{item.executionId ?? '未知'}</p>
+        {approval && <>
+          <p>{approval.target.connectionName} · {approval.target.host}:{approval.target.port} · 账号 {approval.target.username}</p>
+          <p>配置版本 {approval.target.configVersion}{approval.target.tunnelSshConnectionId ? ` · SSH 跳板 ${approval.target.tunnelSshConnectionId}` : ''}</p>
+          <pre><code>{approval.sql}</code></pre>
+          <p>风险 {item.riskLevel}：{approval.riskReasons}</p>
+          <p>{approval.impactNotice}</p><p>{approval.connectionNotice}</p>
+          <p>到期时间：{new Date(approval.expiresAt).toLocaleString()}</p>
+        </>}
+        {approvalInvalid && item.status === 'approval_required' && <p role="status">审批已过期或目标已变化，无法继续批准。</p>}
+        {item.databaseResult && <>
+          <p>{item.databaseResult.outcome ?? item.databaseResult.state}{item.databaseResult.outcome === 'OUTCOME_UNKNOWN' ? '：影响尚未确认，请核查原执行，禁止自动重试。' : ''}</p>
+          {item.databaseResult.reason && <p>{item.databaseResult.reason}</p>}
+          {item.databaseResult.result && <ResultGrid result={{ ...item.databaseResult.result,
+            affectedRows: item.databaseResult.result.affectedRows === null ? null : String(item.databaseResult.result.affectedRows),
+            rows: item.databaseResult.result.rows.slice(0, 20),
+          }} />}
+          {item.databaseResult.result?.previewTruncated && <p>仅展示前20行预览。</p>}
+        </>}
+      </div>}
+
       {item.status === "approval_required" && onApprovalDecision && (
         <div className="tool-approval-actions" role="group" aria-label="命令审批">
           <button
             type="button"
             className="tool-approval-btn approve"
-            disabled={decisionPending}
+            disabled={decisionPending || Boolean(approvalInvalid)}
             onClick={() => void submitDecision("approve")}
           >
             <Check size={13} aria-hidden="true" />
@@ -167,7 +207,7 @@ function ToolEntry({
           <button
             type="button"
             className="tool-approval-btn deny"
-            disabled={decisionPending}
+            disabled={decisionPending || Boolean(approvalInvalid)}
             onClick={() => void submitDecision("deny")}
           >
             <X size={13} aria-hidden="true" />

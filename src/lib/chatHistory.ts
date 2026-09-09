@@ -1,5 +1,6 @@
 import type { ChatModelSelection, ChatTurn, Conversation, TranscriptItem } from "../types";
 import { useChatStore } from "../store/chatStore";
+import { conversationForHistory } from './chatHistoryPolicy';
 
 const DATABASE_NAME = "crowssh-chat-history";
 const DATABASE_VERSION = 1;
@@ -107,8 +108,10 @@ function parseConversation(value: unknown): Conversation | null {
     agentId: item.agentId,
     serverId: item.serverId,
     serverLabel: item.serverLabel,
-    serverSessionId: item.serverSessionId,
-    terminalSessionId: item.terminalSessionId,
+    serverSessionId: item.resourceKind === 'DB' ? undefined : item.serverSessionId,
+    terminalSessionId: item.resourceKind === 'DB' ? undefined : item.terminalSessionId,
+    resourceKind: item.resourceKind === 'DB' ? 'DB' : 'SSH',
+    dbConnectionId: item.resourceKind === 'DB' && typeof item.dbConnectionId === 'string' ? item.dbConnectionId : undefined,
     modelSelection: parseModelSelection(item.modelSelection),
     turns,
     createdAt: item.createdAt,
@@ -126,6 +129,7 @@ async function loadConversations(): Promise<Conversation[]> {
       const conversations = request.result
         .map(parseConversation)
         .filter((item): item is Conversation => item !== null)
+        .map(conversationForHistory)
         .sort((a, b) => b.updatedAt - a.updatedAt);
       resolve(conversations);
     };
@@ -142,7 +146,7 @@ async function saveConversations(conversations: Conversation[]): Promise<void> {
     const store = transaction.objectStore(CONVERSATION_STORE);
     conversations.forEach((conversation) => {
       const record: StoredConversation = {
-        ...conversation,
+        ...conversationForHistory(conversation),
         schemaVersion: SCHEMA_VERSION,
       };
       store.put(record);

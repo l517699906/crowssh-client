@@ -21,7 +21,8 @@ export type ConversationAction =
       type: "set_session";
       conversationId: string;
       sessionId: string;
-      terminalSessionId: string;
+      terminalSessionId?: string;
+      dbSessionId?: string;
     }
   | { type: "clear_session"; conversationId: string }
   | { type: "start_turn"; conversationId: string; turn: ChatTurn }
@@ -64,6 +65,8 @@ interface CreateConversationInput {
   serverId: string;
   serverLabel: string;
   terminalId: string;
+  resourceKind?: 'SSH' | 'DB';
+  dbConnectionId?: string;
 }
 
 interface ChatStore {
@@ -74,7 +77,7 @@ interface ChatStore {
   runningByTerminal: Record<string, string>;
   errorsByConversation: Record<string, string | null>;
   hydrate: (conversations: Conversation[]) => void;
-  reconcileAgents: (availableAgentIds: string[], fallbackAgentId: string) => void;
+  reconcileAgents: (availableAgentIds: string[], fallbackAgentId: string, resourceKind?: 'SSH' | 'DB') => void;
   resetSessions: () => void;
   ensureConversation: (input: CreateConversationInput) => string;
   createConversation: (input: CreateConversationInput) => string;
@@ -113,6 +116,7 @@ function reduceConversations(
         ...conversation,
         serverSessionId: undefined,
         terminalSessionId: undefined,
+        dbSessionId: undefined,
       }));
     case "set_agent":
       return conversations.map((conversation) =>
@@ -122,6 +126,7 @@ function reduceConversations(
               agentId: action.agentId,
               serverSessionId: undefined,
               terminalSessionId: undefined,
+              dbSessionId: undefined,
               updatedAt: Date.now(),
             }
           : conversation,
@@ -143,6 +148,7 @@ function reduceConversations(
               ...conversation,
               serverSessionId: action.sessionId,
               terminalSessionId: action.terminalSessionId,
+              dbSessionId: action.dbSessionId,
             }
           : conversation,
       );
@@ -153,6 +159,7 @@ function reduceConversations(
               ...conversation,
               serverSessionId: undefined,
               terminalSessionId: undefined,
+              dbSessionId: undefined,
             }
           : conversation,
       );
@@ -191,9 +198,9 @@ function reduceConversations(
         return {
           ...turn,
           statusText: action.item.status === "approval_required"
-            ? "等待命令确认"
+            ? "等待执行确认"
             : action.item.status === "running"
-              ? "正在执行命令"
+              ? "正在执行工具"
               : turn.statusText,
           items: existingItem
             ? turn.items.map((item) =>
@@ -259,10 +266,10 @@ function reduceConversations(
                     && (item.status === "approval_required" || item.status === "running")
                   ? {
                       ...item,
-                      status: "cancelled" as const,
+                      status: item.resourceKind?.startsWith('DB') ? "error" as const : "cancelled" as const,
                       completedAt: action.completedAt,
                       durationMs: Math.max(0, action.completedAt - item.startedAt),
-                      errorMessage: "命令执行已取消。",
+                      errorMessage: item.resourceKind?.startsWith('DB') ? "对话已结束，数据库执行结果尚未确认；请核查原执行 ID，不要自动重试。" : "命令执行已取消。",
                     }
                   : item,
             ),
@@ -284,6 +291,8 @@ function makeConversation(input: CreateConversationInput): Conversation {
     agentId: input.agentId,
     serverId: input.serverId,
     serverLabel: input.serverLabel,
+    resourceKind: input.resourceKind ?? 'SSH',
+    dbConnectionId: input.resourceKind === 'DB' ? input.dbConnectionId : undefined,
     turns: [],
     createdAt: now,
     updatedAt: now,
@@ -306,17 +315,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       ].sort((a, b) => b.updatedAt - a.updatedAt);
       return { hydrated: true, conversations: merged };
     }),
-  reconcileAgents: (availableAgentIds, fallbackAgentId) => {
+  reconcileAgents: (availableAgentIds, fallbackAgentId, resourceKind = 'SSH') => {
     const available = new Set(availableAgentIds);
     set((state) => ({
       conversations: state.conversations.map((conversation) =>
-        available.has(conversation.agentId)
+        (conversation.resourceKind ?? 'SSH') !== resourceKind || available.has(conversation.agentId)
           ? conversation
           : {
               ...conversation,
               agentId: fallbackAgentId,
               serverSessionId: undefined,
               terminalSessionId: undefined,
+              dbSessionId: undefined,
             },
       ),
     }));
@@ -329,7 +339,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const state = get();
     const activeId = state.activeByTerminal[input.terminalId];
     const active = state.conversations.find((item) => item.id === activeId);
-    if (active?.serverId === input.serverId) return active.id;
+    if (active?.serverId === input.serverId && (active.resourceKind ?? 'SSH') === (input.resourceKind ?? 'SSH')) return active.id;
     return get().createConversation(input);
   },
   createConversation: (input) => {

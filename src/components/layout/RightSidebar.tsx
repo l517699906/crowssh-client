@@ -1,15 +1,14 @@
 import { ChatPanel } from "../chat/ChatPanel";
-import type { ServerConfig, TerminalSession } from "../../types";
+import type { ChatTarget } from "../../types";
 
 interface Props {
-  terminal?: TerminalSession;
-  server?: ServerConfig;
+  target?: ChatTarget;
 }
 
-export function RightSidebar({ terminal, server }: Props) {
+export function RightSidebar({ target }: Props) {
   return (
     <div className="right-sidebar island">
-      <ChatPanel terminal={terminal} server={server} />
+      <ChatPanel target={target} />
     </div>
   );
 }

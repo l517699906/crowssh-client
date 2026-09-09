@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Eye, History, Sparkles, SquarePen } from "lucide-react";
+import { conversationMatchesTarget, describeChatTarget } from "../../lib/chatTarget";
 import { useChat } from "../../hooks/useChat";
-import type { Conversation, ServerConfig, TerminalSession } from "../../types";
+import type { Conversation, ChatTarget } from "../../types";
 import { ChatHistoryPanel } from "./ChatHistoryPanel";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
@@ -10,11 +11,11 @@ import "./chat.css";
 type ChatView = "chat" | "history" | "preview";
 
 interface Props {
-  terminal?: TerminalSession;
-  server?: ServerConfig;
+  target?: ChatTarget;
 }
 
-export function ChatPanel({ terminal, server }: Props) {
+export function ChatPanel({ target }: Props) {
+  const resource = describeChatTarget(target);
   const {
     active,
     activeId,
@@ -34,12 +35,12 @@ export function ChatPanel({ terminal, server }: Props) {
     sending,
     stopMessage,
     terminalBusy,
-  } = useChat(terminal, server);
+  } = useChat(target);
   const [view, setView] = useState<ChatView>("chat");
   const [previewConversationId, setPreviewConversationId] = useState<string | null>(null);
   const [draftsByTerminal, setDraftsByTerminal] = useState<Record<string, string>>({});
 
-  const terminalId = terminal?.id;
+  const terminalId = resource?.id;
   const draft = terminalId ? draftsByTerminal[terminalId] ?? "" : "";
   const previewConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === previewConversationId) ?? null,
@@ -81,13 +82,7 @@ export function ChatPanel({ terminal, server }: Props) {
   const displayedConversation = view === "preview" ? previewConversation : active;
   const title = view === "history" ? "历史记录" : view === "preview" ? "只读预览" : "AI 助手";
   const TitleIcon = view === "history" ? History : view === "preview" ? Eye : Sparkles;
-  const canSend = Boolean(
-    terminal
-    && terminal.status === "connected"
-    && terminal.backendSessionId
-    && active
-    && active.serverId === terminal.serverId,
-  );
+  const canSend = Boolean(resource?.ready && active && conversationMatchesTarget(active, target));
 
   return (
     <div className="chat-panel">
@@ -113,7 +108,7 @@ export function ChatPanel({ terminal, server }: Props) {
                 title="新建对话"
                 aria-label="新建对话"
                 onClick={handleNewConversation}
-                disabled={!terminal || !agents.length || terminalBusy}
+                disabled={!resource || !agents.length || terminalBusy}
               >
                 <SquarePen size={16} />
               </button>
@@ -138,7 +133,7 @@ export function ChatPanel({ terminal, server }: Props) {
       {view === "history" ? (
         <ChatHistoryPanel
           conversations={conversations}
-          currentServerId={terminal?.serverId}
+          currentServerId={resource?.connectionId}
           activeConversationId={activeId}
           hydrated={hydrated}
           onSelect={handleHistorySelect}
@@ -149,7 +144,7 @@ export function ChatPanel({ terminal, server }: Props) {
             <div className="chat-readonly-notice">
               <Eye size={14} />
               <span>
-                来自 {previewConversation.serverLabel}，请切换到该服务器的 SSH 标签页继续对话。
+                来自 {previewConversation.serverLabel}，请打开相同类型和连接的工作台，显式选择此历史对话后继续。
               </span>
             </div>
           )}
@@ -177,7 +172,7 @@ export function ChatPanel({ terminal, server }: Props) {
               }
               text={draft}
               setText={setDraft}
-              terminalLabel={canSend ? terminal?.title : undefined}
+              terminalLabel={canSend ? resource?.label : undefined}
               sending={sending}
               onStop={stopMessage}
             />

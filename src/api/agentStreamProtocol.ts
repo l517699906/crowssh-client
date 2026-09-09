@@ -4,6 +4,12 @@ export interface ChatStreamEventMetadata {
   sequence?: number;
   timestamp?: number;
   sessionId?: string;
+  resourceKind?: 'SSH' | 'DB' | 'DB_SQL' | 'DB_METADATA';
+  turnId?: string;
+  executionId?: string;
+  resourceSnapshot?: import('../types/database').DbResourceSnapshot;
+  databaseApproval?: import('../types/database').DbApprovalDetails;
+  databaseResult?: import('../types/database').DbToolResult;
 }
 
 export type ChatStreamEvent = ChatStreamEventMetadata & (
@@ -13,7 +19,7 @@ export type ChatStreamEvent = ChatStreamEventMetadata & (
       event: "tool_approval_required";
       toolCallId: string;
       toolName: string;
-      command: string;
+      command?: string;
       status: "approval_required";
       approvalId: string;
       riskLevel?: string;

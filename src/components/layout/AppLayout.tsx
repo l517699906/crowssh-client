@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Database, TerminalSquare, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import type { ServerConfig } from "../../types";
 import type { useServers } from "../../hooks/useServers";
 import type { useTerminals } from "../../hooks/useTerminals";
@@ -12,11 +12,19 @@ import { RightSidebar } from "./RightSidebar";
 import { Splitter } from "./Splitter";
 import { TerminalPanel } from "../terminal/TerminalPanel";
 import { ServerFormDialog } from "../servers/ServerFormDialog";
+import { useDbConnections } from "../../hooks/useDbConnections";
+import { useDbSessions } from "../../hooks/useDbSessions";
+import { useWorkbenchStore } from "../../store/workbenchStore";
+import type { DbConnectionConfig } from "../../types/database";
+import { DatabaseView } from "../database/DatabaseView";
+import { DbConnectionFormDialog } from "../database/DbConnectionFormDialog";
+import "../database/database.css";
 import "./layout.css";
 import "./workbench.css";
 
 type Dialog = { mode: "add" } | { mode: "edit"; server: ServerConfig } | null;
 type HostKeyDialog = { server: ServerConfig; sessionId: string; challenge: SshHostKeyStatusDTO } | null;
+const SqlConsoleView = lazy(() => import("../database/SqlConsoleView").then((module) => ({ default: module.SqlConsoleView })));
 
 interface Props {
   servers: ReturnType<typeof useServers>;
@@ -25,6 +33,21 @@ interface Props {
 
 export function AppLayout({ servers, terminals }: Props) {
   const layout = useLayoutStore();
+  const dbConnections = useDbConnections();
+  const dbSessions = useDbSessions();
+  const workbench = useWorkbenchStore();
+  const [dbDialog, setDbDialog] = useState<{ initial?: DbConnectionConfig } | null>(null);
+  const [deleteDb, setDeleteDb] = useState<DbConnectionConfig | null>(null);
+  const [closeDb, setCloseDb] = useState<string | null>(null);
+  const [dbMutationPending, setDbMutationPending] = useState(false);
+  const activeDb = workbench.activeId ? dbSessions.workspaces[workbench.activeId] : undefined;
+  useEffect(() => {
+    if (!Object.keys(dbSessions.workspaces).length) return;
+    const timer = setInterval(() => { void dbSessions.refresh(); }, 15000);
+    const refresh = () => { void dbSessions.refresh(); };
+    window.addEventListener("focus", refresh);
+    return () => { clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [Object.keys(dbSessions.workspaces).length, dbSessions.refresh]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [hostKeyDialog, setHostKeyDialog] = useState<HostKeyDialog>(null);
   const [trustingHostKey, setTrustingHostKey] = useState(false);
@@ -74,7 +97,10 @@ export function AppLayout({ servers, terminals }: Props) {
               className="layout-pane layout-pane-left"
               style={{ width: layout.leftWidth, flexShrink: 0, display: "flex" }}
             >
-              <LeftSidebar
+              {layout.activeView === "databases" ? <div className="left-sidebar island"><DatabaseView
+                connections={dbConnections} sessions={dbSessions} activeId={workbench.activeId}
+                onAdd={() => setDbDialog({})} onEdit={(initial) => setDbDialog({ initial })} onDelete={setDeleteDb}
+              /></div> : <LeftSidebar
                 servers={servers.servers}
                 onConnect={handleConnect}
                 onAddServer={() => setDialog({ mode: "add" })}
@@ -85,7 +111,7 @@ export function AppLayout({ servers, terminals }: Props) {
                 onRefreshServers={() => void servers.refresh()}
                 activeServer={activeServer}
                 activeSessionId={activeTerminal?.id}
-              />
+              />}
             </div>
             <Splitter onResize={(dx) => layout.setLeftWidth(layout.leftWidth + dx)} />
           </>
@@ -96,13 +122,33 @@ export function AppLayout({ servers, terminals }: Props) {
           data-visible={layout.terminalVisible}
           style={{ display: layout.terminalVisible ? "flex" : "none" }}
         >
-          <TerminalPanel
+          {workbench.tabs.length > 0 && <div className="db-workbench-tabs" role="tablist" aria-label="工作台标签">
+            {workbench.tabs.map((tab) => {
+              const terminal = terminals.sessions.find((item) => item.id === tab.id);
+              const database = dbSessions.workspaces[tab.id];
+              const connection = dbConnections.connections.find((item) => item.connectionId === database?.session.connectionId);
+              const title = tab.kind === "terminal" ? terminal?.title ?? "终端" : connection?.connectionName ?? "SQL 控制台";
+              return <div key={tab.id} className={`db-workbench-tab${tab.id === workbench.activeId ? ' active' : ''}`}>
+                <button role="tab" aria-selected={tab.id === workbench.activeId} onClick={() => workbench.activate(tab.id)}>{tab.kind === 'sql' ? <Database size={14} /> : <TerminalSquare size={14} />}{title}</button>
+                <button aria-label={`关闭 ${title}`} onClick={() => {
+                  if (tab.kind === 'terminal') terminals.closeSession(tab.id);
+                  else if (database?.session.transactionState !== 'IDLE' || database.session.lifecycleStatus === 'CLOSING') setCloseDb(tab.id);
+                  else void dbSessions.closeSession(tab.id);
+                }}><X size={13} /></button>
+              </div>;
+            })}
+          </div>}
+          <div className="db-workbench-content" style={{ display: activeDb ? 'none' : 'flex' }}><TerminalPanel
             terminals={terminals}
             servers={servers.servers}
-            panelVisible={layout.terminalVisible}
+            panelVisible={layout.terminalVisible && !activeDb}
+            showTabs={false}
             onConnectionReady={() => layout.showActivity("files")}
             onHostKeyChallenge={(server, sessionId, challenge) => setHostKeyDialog({ server, sessionId, challenge })}
-          />
+          /></div>
+          {Object.keys(dbSessions.workspaces).map((id) => <div key={id} className="db-workbench-content" style={{ display: workbench.activeId === id ? 'flex' : 'none' }}>
+            <Suspense fallback={<p className="db-message">加载 SQL 编辑器…</p>}><SqlConsoleView sessionId={id} refresh={dbSessions.refresh} /></Suspense>
+          </div>)}
         </main>
 
         {layout.rightVisible && (
@@ -114,7 +160,7 @@ export function AppLayout({ servers, terminals }: Props) {
               className="layout-pane layout-pane-right"
               style={{ width: layout.rightWidth, flexShrink: 0, display: "flex" }}
             >
-              <RightSidebar terminal={activeTerminal} server={activeServer} />
+              <RightSidebar target={activeDb ? { kind: "sql", dbSession: activeDb.session, dbConnection: dbConnections.connections.find((item) => item.connectionId === activeDb.session.connectionId) } : activeTerminal ? { kind: "terminal", terminal: activeTerminal, server: activeServer } : undefined} />
             </div>
           </>
         )}
@@ -127,6 +173,23 @@ export function AppLayout({ servers, terminals }: Props) {
           onClose={() => setDialog(null)}
         />
       )}
+
+      {dbDialog && <DbConnectionFormDialog initial={dbDialog.initial} servers={servers.servers} onClose={() => setDbDialog(null)} onSave={async (payload) => {
+        const error = await dbConnections.save(payload);
+        if (!error) await dbSessions.refresh();
+        return error;
+      }} />}
+      {(deleteDb || closeDb) && <div className="modal-overlay"><div className="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="db-close-title">
+        <div className="modal-header"><strong id="db-close-title">{deleteDb ? `删除连接 ${deleteDb.connectionName}` : '关闭数据库工作台'}</strong></div>
+        <div className="modal-body"><p>{deleteDb ? '删除连接将使相关工作台和审批失效。' : '工作台可能存在未提交事务，关闭时将尝试回滚。连接故障或已隐式提交的修改无法保证回滚。'}</p><p>执行结果未确认时，请先核查数据库实际状态。</p>{dbConnections.error && <p role="alert">{dbConnections.error}</p>}</div>
+        <div className="modal-footer"><button className="btn" disabled={dbMutationPending} onClick={() => { setDeleteDb(null); setCloseDb(null); }}>取消</button><button className="btn btn-primary" disabled={dbMutationPending} onClick={async () => {
+          setDbMutationPending(true);
+          try {
+            const ok = deleteDb ? await dbConnections.remove(deleteDb.connectionId) : await dbSessions.closeSession(closeDb!);
+            if (ok) { setDeleteDb(null); setCloseDb(null); await dbSessions.refresh(); }
+          } finally { setDbMutationPending(false); }
+        }}>确认{deleteDb ? '删除' : '关闭'}</button></div>
+      </div></div>}
 
       {hostKeyDialog && (
         <div className="modal-overlay" role="presentation">
