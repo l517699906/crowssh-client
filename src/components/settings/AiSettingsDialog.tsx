@@ -52,9 +52,11 @@ function validateEndpoint(profile: AiProfile) {
   try {
     url = new URL(profile.baseUrl.trim());
   } catch {
-    throw new Error("服务地址必须是完整的 HTTPS 地址");
+    throw new Error("服务地址必须是完整的 HTTP 或 HTTPS 地址");
   }
-  if (url.protocol !== "https:") throw new Error("服务地址必须使用 HTTPS");
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("服务地址必须使用 HTTP 或 HTTPS");
+  }
   if (url.username || url.password || url.search || url.hash) {
     throw new Error("服务地址不能包含账号、查询参数或锚点");
   }
