@@ -1,21 +1,27 @@
-import { memo, useEffect, useState } from "react";
+import { isValidElement, memo, useEffect, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
   CircleCheck,
   CircleX,
+  Clock,
+  Copy,
   LoaderCircle,
   ShieldAlert,
   SquareTerminal,
   X,
   Database,
+  BrainCircuit,
+  ListChecks,
 } from "lucide-react";
 import type { CommandApprovalDecision } from "../../api/agent";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CodeBlock } from "./CodeBlock";
 import type {
   ChatTurn,
   StatusTranscriptItem,
+  ProgressTranscriptItem,
   ToolTranscriptItem,
   TranscriptExecutionStatus,
 } from "../../types";
@@ -26,6 +32,22 @@ function formatDuration(durationMs?: number) {
   if (durationMs === undefined) return null;
   if (durationMs < 1000) return `${durationMs} ms`;
   return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)} s`;
+}
+
+function formatCountdown(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes} 分 ${String(seconds).padStart(2, "0")} 秒` : `${seconds} 秒`;
+}
+
+// 后端风险等级为自由字符串，这里归一到三档视觉样式
+function riskLevelClass(level?: string) {
+  const normalized = level?.toUpperCase() ?? "";
+  if (/CRITICAL|HIGH|DANGER/.test(normalized)) return "high";
+  if (/MEDIUM|MODERATE|WARN/.test(normalized)) return "medium";
+  if (/LOW|SAFE/.test(normalized)) return "low";
+  return "medium";
 }
 
 function executionIcon(status: TranscriptExecutionStatus, size = 14) {
@@ -41,6 +63,23 @@ function executionIcon(status: TranscriptExecutionStatus, size = 14) {
   return <CircleX size={size} />;
 }
 
+function nodeText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
+  return "";
+}
+
+// 围栏代码块交给 CodeBlock 渲染（高亮 + 复制），行内 code 保持默认
+const markdownComponents: Components = {
+  pre({ children }) {
+    const child = Array.isArray(children) ? children[0] : children;
+    const className = isValidElement<{ className?: string }>(child) ? child.props.className ?? "" : "";
+    const language = /language-([\w+#.-]+)/.exec(className)?.[1];
+    return <CodeBlock code={nodeText(child).replace(/\n$/, "")} language={language} />;
+  },
+};
+
 const MarkdownContent = memo(function MarkdownContent({
   content,
   streaming,
@@ -50,7 +89,7 @@ const MarkdownContent = memo(function MarkdownContent({
 }) {
   return (
     <div className="transcript-markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} skipHtml>
         {content}
       </ReactMarkdown>
       {streaming && <span className="typing-caret" aria-hidden="true" />}
@@ -74,6 +113,20 @@ function StatusEntry({
       {durationMs !== undefined && item.status !== "running" && (
         <span className="transcript-duration">{formatDuration(durationMs)}</span>
       )}
+    </div>
+  );
+}
+
+function ProgressEntry({ item }: { item: ProgressTranscriptItem }) {
+  const Icon = item.title.startsWith("第 ") ? ListChecks : BrainCircuit;
+  return (
+    <div className={`timeline-item transcript-progress-entry ${item.status}`}>
+      <span className="timeline-node-icon" aria-hidden="true">
+        {item.status === "running" ? <LoaderCircle className="transcript-spinner" size={14} />
+          : item.status === "error" ? <CircleX size={14} /> : <Icon size={14} />}
+      </span>
+      <strong>{item.title}</strong>
+      {item.detail && <span className="transcript-progress-detail">{item.detail}</span>}
     </div>
   );
 }
@@ -117,7 +170,10 @@ function ToolEntry({
     expired: "已过期",
     cancelled: "已取消",
   }[item.status];
-  const showDetail = expanded || item.status === "approval_required";
+  const isSubAgent = item.toolName.startsWith("subAgent:");
+  const readableToolName = isSubAgent
+    ? `派发子 Agent · ${item.toolName.slice("subAgent:".length)}`
+    : item.toolName;
 
   useEffect(() => {
     if (item.status === "approval_required") setExpanded(true);
@@ -136,6 +192,106 @@ function ToolEntry({
     }
   };
 
+  const riskClass = riskLevelClass(item.riskLevel);
+  const ToolIcon = isDatabase ? Database : isSubAgent ? BrainCircuit : SquareTerminal;
+
+  if (item.status === "approval_required") {
+    const expiresAt = approval ? Date.parse(approval.expiresAt) : NaN;
+    const remainingMs = Number.isFinite(expiresAt) ? Math.max(0, expiresAt - now) : undefined;
+    const totalMs = Number.isFinite(expiresAt) ? Math.max(1, expiresAt - item.startedAt) : undefined;
+    const remainingRatio = remainingMs !== undefined && totalMs !== undefined
+      ? Math.min(1, remainingMs / totalMs)
+      : undefined;
+
+    return (
+      <div className={`timeline-item transcript-tool-entry ${item.status}`}>
+        <span className="timeline-node-icon" aria-hidden="true">
+          {executionIcon(item.status)}
+        </span>
+        <div className={`approval-card risk-${riskClass}`} role="group" aria-label="待确认的操作">
+          <div className="approval-card-header">
+            <ShieldAlert size={15} aria-hidden="true" />
+            <span className="approval-card-title">
+              {isDatabase ? "需要确认 SQL 执行" : isSubAgent ? "需要确认子 Agent 任务" : "需要确认命令执行"}
+            </span>
+            {item.riskLevel && (
+              <span className={`risk-badge risk-${riskClass}`}>风险 {item.riskLevel}</span>
+            )}
+          </div>
+
+          {isDatabase && approval ? (
+            <>
+              <dl className="approval-meta">
+                <dt>连接</dt><dd>{approval.target.connectionName}</dd>
+                <dt>主机</dt><dd>{approval.target.host}:{approval.target.port}</dd>
+                <dt>账号</dt><dd>{approval.target.username}</dd>
+                <dt>目标库</dt><dd>{snapshot?.targetDatabase ?? "未选择"}</dd>
+                <dt>配置版本</dt><dd>{approval.target.configVersion}</dd>
+                {approval.target.tunnelSshConnectionId && <>
+                  <dt>SSH 跳板</dt><dd>{approval.target.tunnelSshConnectionId}</dd>
+                </>}
+                <dt>执行 ID</dt><dd>{item.executionId ?? "未知"}</dd>
+              </dl>
+              <CodeBlock code={approval.sql} language="sql" label="SQL" className="approval-code" />
+              {approval.riskReasons && <p className="approval-reason">{approval.riskReasons}</p>}
+              {(approval.impactNotice || approval.connectionNotice) && (
+                <ul className="approval-notices">
+                  {approval.impactNotice && <li>{approval.impactNotice}</li>}
+                  {approval.connectionNotice && <li>{approval.connectionNotice}</li>}
+                </ul>
+              )}
+            </>
+          ) : (
+            command
+              ? <CodeBlock code={command} language={isDatabase ? "sql" : "shell"} label={isDatabase ? "SQL" : readableToolName} className="approval-code" />
+              : <p className="approval-reason">{readableToolName}</p>
+          )}
+
+          {remainingMs !== undefined && (
+            <div className="approval-expiry">
+              <span className="approval-expiry-label">
+                <Clock size={12} aria-hidden="true" />
+                {remainingMs > 0 ? `剩余 ${formatCountdown(remainingMs)}` : "已到期"}
+              </span>
+              <span className="approval-expiry-track" aria-hidden="true">
+                <span style={{ transform: `scaleX(${remainingRatio ?? 0})` }} />
+              </span>
+            </div>
+          )}
+
+          {approvalInvalid && (
+            <p className="approval-invalid" role="status">审批已过期或目标已变化，无法继续批准。</p>
+          )}
+
+          {onApprovalDecision && (
+            <div className="tool-approval-actions" role="group" aria-label="命令审批">
+              <button
+                type="button"
+                className="tool-approval-btn approve"
+                disabled={decisionPending || Boolean(approvalInvalid)}
+                onClick={() => void submitDecision("approve")}
+              >
+                {decisionPending ? <LoaderCircle className="transcript-spinner" size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
+                允许
+              </button>
+              <button
+                type="button"
+                className="tool-approval-btn deny"
+                disabled={decisionPending || Boolean(approvalInvalid)}
+                onClick={() => void submitDecision("deny")}
+              >
+                <X size={13} aria-hidden="true" />
+                拒绝
+              </button>
+            </div>
+          )}
+
+          {decisionError && <div className="tool-error-message">{decisionError}</div>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`timeline-item transcript-tool-entry ${item.status}`}>
       <span className="timeline-node-icon" aria-hidden="true">
@@ -149,11 +305,11 @@ function ToolEntry({
         disabled={!command && !isDatabase}
         onClick={() => setExpanded((current) => !current)}
       >
-        {isDatabase ? <Database size={14} aria-hidden="true" /> : <SquareTerminal size={14} aria-hidden="true" />}
-        <span className="tool-status-label">{statusLabel}</span>
-        <span className="tool-command-summary">{command || item.toolName}</span>
+        <ToolIcon size={14} aria-hidden="true" />
+        <span className={`tool-status-label ${item.status}`}>{statusLabel}</span>
+        <span className="tool-command-summary">{command || readableToolName}</span>
         {duration && <span className="tool-duration">{duration}</span>}
-        {command && (
+        {(command || isDatabase) && (
           <ChevronDown
             className={`tool-chevron${expanded ? " expanded" : ""}`}
             size={14}
@@ -162,28 +318,29 @@ function ToolEntry({
         )}
       </button>
 
-      {showDetail && command && (
+      {expanded && command && (
         <div className="tool-command-detail">
-          <pre><code>{command}</code></pre>
+          <CodeBlock code={command} language={isDatabase ? "sql" : "shell"} label={isDatabase ? "SQL" : "命令"} />
           {item.outputLength !== undefined && (
             <span>终端输出 {item.outputLength} 字符</span>
           )}
         </div>
       )}
 
-      {isDatabase && (showDetail || item.databaseResult) && <div className="tool-command-detail">
-        <p>目标库：{snapshot?.targetDatabase ?? item.databaseResult?.targetDatabase ?? '未选择'} · 执行 ID：{item.executionId ?? '未知'}</p>
-        {approval && <>
-          <p>{approval.target.connectionName} · {approval.target.host}:{approval.target.port} · 账号 {approval.target.username}</p>
-          <p>配置版本 {approval.target.configVersion}{approval.target.tunnelSshConnectionId ? ` · SSH 跳板 ${approval.target.tunnelSshConnectionId}` : ''}</p>
-          <pre><code>{approval.sql}</code></pre>
-          <p>风险 {item.riskLevel}：{approval.riskReasons}</p>
-          <p>{approval.impactNotice}</p><p>{approval.connectionNotice}</p>
-          <p>到期时间：{new Date(approval.expiresAt).toLocaleString()}</p>
-        </>}
-        {approvalInvalid && item.status === 'approval_required' && <p role="status">审批已过期或目标已变化，无法继续批准。</p>}
+      {isDatabase && (expanded || item.databaseResult) && <div className="tool-command-detail">
+        <dl className="approval-meta">
+          <dt>目标库</dt><dd>{snapshot?.targetDatabase ?? item.databaseResult?.targetDatabase ?? '未选择'}</dd>
+          <dt>执行 ID</dt><dd>{item.executionId ?? '未知'}</dd>
+          {approval && <>
+            <dt>连接</dt><dd>{approval.target.connectionName} · {approval.target.host}:{approval.target.port}</dd>
+            {item.riskLevel && <><dt>风险</dt><dd>{item.riskLevel}</dd></>}
+          </>}
+        </dl>
+        {expanded && approval && <CodeBlock code={approval.sql} language="sql" label="SQL" />}
         {item.databaseResult && <>
-          <p>{item.databaseResult.outcome ?? item.databaseResult.state}{item.databaseResult.outcome === 'OUTCOME_UNKNOWN' ? '：影响尚未确认，请核查原执行，禁止自动重试。' : ''}</p>
+          <p className={`db-outcome${item.databaseResult.outcome === 'OUTCOME_UNKNOWN' ? ' unknown' : ''}`}>
+            {item.databaseResult.outcome ?? item.databaseResult.state}{item.databaseResult.outcome === 'OUTCOME_UNKNOWN' ? '：影响尚未确认，请核查原执行，禁止自动重试。' : ''}
+          </p>
           {item.databaseResult.reason && <p>{item.databaseResult.reason}</p>}
           {item.databaseResult.result && <ResultGrid result={{ ...item.databaseResult.result,
             affectedRows: item.databaseResult.result.affectedRows === null ? null : String(item.databaseResult.result.affectedRows),
@@ -192,31 +349,6 @@ function ToolEntry({
           {item.databaseResult.result?.previewTruncated && <p>仅展示前20行预览。</p>}
         </>}
       </div>}
-
-      {item.status === "approval_required" && onApprovalDecision && (
-        <div className="tool-approval-actions" role="group" aria-label="命令审批">
-          <button
-            type="button"
-            className="tool-approval-btn approve"
-            disabled={decisionPending || Boolean(approvalInvalid)}
-            onClick={() => void submitDecision("approve")}
-          >
-            <Check size={13} aria-hidden="true" />
-            允许
-          </button>
-          <button
-            type="button"
-            className="tool-approval-btn deny"
-            disabled={decisionPending || Boolean(approvalInvalid)}
-            onClick={() => void submitDecision("deny")}
-          >
-            <X size={13} aria-hidden="true" />
-            拒绝
-          </button>
-        </div>
-      )}
-
-      {decisionError && <div className="tool-error-message">{decisionError}</div>}
 
       {item.errorMessage && (
         <div className="tool-error-message">{item.errorMessage}</div>
@@ -235,6 +367,8 @@ export const TranscriptTurn = memo(function TranscriptTurn({
     decision: CommandApprovalDecision,
   ) => Promise<void>;
 }) {
+  const [stepsOpen, setStepsOpen] = useState(turn.status === "running");
+  useEffect(() => setStepsOpen(turn.status === "running"), [turn.status]);
   let lastTextIndex = -1;
   turn.items.forEach((item, index) => {
     if (item.type === "assistant_text") lastTextIndex = index;
@@ -242,16 +376,40 @@ export const TranscriptTurn = memo(function TranscriptTurn({
   const durationMs = turn.completedAt === undefined
     ? undefined
     : Math.max(0, turn.completedAt - turn.createdAt);
+  const processItems = turn.items.filter((item) => item.type === "status" || item.type === "progress" || item.type === "tool");
+  const answerItems = turn.items.filter((item) => item.type === "assistant_text" || item.type === "error");
+  const answerText = answerItems
+    .filter((item) => item.type === "assistant_text")
+    .map((item) => item.content)
+    .join("\n\n")
+    .trim();
+  const completedSteps = processItems.filter((item) => item.type === "progress" ? item.status !== "running" : item.type === "tool" ? item.status !== "running" && item.status !== "approval_required" : true).length;
 
   return (
     <section className={`transcript-turn ${turn.status}`}>
       <div className="turn-prompt">
-        <span className="turn-prompt-marker" aria-hidden="true">›</span>
         <div className="turn-prompt-text">{turn.prompt}</div>
+        <time className="turn-prompt-time" dateTime={new Date(turn.createdAt).toISOString()}>
+          {new Date(turn.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </time>
       </div>
 
-      <div className="turn-timeline">
-        {turn.items.map((item, index) => {
+      {turn.status === "running" && turn.items.length === 0 && (
+        <div className="turn-thinking" role="status" aria-label="AI 正在思考">
+          <span className="turn-thinking-dots" aria-hidden="true"><i /><i /><i /></span>
+          <span>{turn.statusText || "正在思考"}</span>
+        </div>
+      )}
+
+      {processItems.length > 0 && <details className="turn-progress" open={stepsOpen} onToggle={(event) => setStepsOpen(event.currentTarget.open)}>
+        <summary className="turn-progress-summary">
+          {turn.status === "running" ? <LoaderCircle className="transcript-spinner" size={14} /> : <ListChecks size={14} />}
+          <span>{turn.status === "running" ? "执行步骤" : "执行过程"}</span>
+          <span className="turn-progress-count">{completedSteps}/{processItems.length} 已完成</span>
+          <ChevronDown className="tool-chevron" size={14} />
+        </summary>
+        <div className="turn-timeline">
+        {processItems.map((item) => {
           if (item.type === "status") {
             return (
               <StatusEntry
@@ -261,6 +419,7 @@ export const TranscriptTurn = memo(function TranscriptTurn({
               />
             );
           }
+          if (item.type === "progress") return <ProgressEntry key={item.id} item={item} />;
           if (item.type === "tool") {
             return (
               <ToolEntry
@@ -270,27 +429,49 @@ export const TranscriptTurn = memo(function TranscriptTurn({
               />
             );
           }
-          if (item.type === "error") {
-            return (
-              <div key={item.id} className="timeline-item transcript-error-entry" role="alert">
-                <span className="timeline-node-icon" aria-hidden="true">
-                  <CircleX size={14} />
-                </span>
-                <span>{item.content}</span>
-              </div>
-            );
-          }
-          return (
-            <div key={item.id} className="timeline-item transcript-text-entry">
-              <span className="timeline-text-node" aria-hidden="true" />
-              <MarkdownContent
-                content={item.content}
-                streaming={turn.status === "running" && index === lastTextIndex}
-              />
-            </div>
-          );
+          return null;
         })}
+        </div>
+      </details>}
+      <div className="turn-answer">
+        {answerItems.map((item) => item.type === "error" ? (
+          <div key={item.id} className="timeline-item transcript-error-entry" role="alert">{item.content}</div>
+        ) : (
+          <div key={item.id} className="timeline-item transcript-text-entry">
+            <MarkdownContent content={item.content} streaming={turn.status === "running" && item.id === turn.items[lastTextIndex]?.id} />
+          </div>
+        ))}
       </div>
+
+      {turn.status !== "running" && answerText && (
+        <div className="turn-actions">
+          <CopyAnswerButton text={answerText} />
+        </div>
+      )}
     </section>
   );
 });
+
+function CopyAnswerButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <button
+      type="button"
+      className={`turn-action-btn${copied ? " copied" : ""}`}
+      title="复制回答"
+      aria-label={copied ? "已复制回答" : "复制回答"}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => setCopied(true), () => undefined);
+      }}
+    >
+      {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+      <span>{copied ? "已复制" : "复制"}</span>
+    </button>
+  );
+}

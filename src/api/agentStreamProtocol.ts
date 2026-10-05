@@ -16,6 +16,10 @@ export type ChatStreamEvent = ChatStreamEventMetadata & (
   | { event: "status"; content: string; status: string }
   | { event: "text"; content: string; fullText?: string }
   | {
+      event: "round_end";
+      stepInfo?: { currentStep: number; maxSteps: number; shouldContinue: boolean; totalToolCalls: number };
+    }
+  | {
       event: "tool_approval_required";
       toolCallId: string;
       toolName: string;

@@ -6,6 +6,7 @@ import type {
   Conversation,
   ErrorTranscriptItem,
   StatusTranscriptItem,
+  ProgressTranscriptItem,
   ToolTranscriptItem,
 } from "../types";
 
@@ -44,6 +45,7 @@ export type ConversationAction =
       turnId: string;
       item: StatusTranscriptItem;
     }
+  | { type: "upsert_progress"; conversationId: string; turnId: string; item: ProgressTranscriptItem }
   | {
       type: "complete_turn";
       conversationId: string;
@@ -226,6 +228,16 @@ function reduceConversations(
           ? turn.items.map((item) => (item.id === action.item.id ? action.item : item))
           : [...turn.items, action.item],
       }));
+    case "upsert_progress":
+      return updateTurn(conversations, action.conversationId, action.turnId, (turn) => {
+        const existing = turn.items.find((item) => item.type === "progress" && item.progressId === action.item.progressId);
+        return {
+          ...turn,
+          items: existing
+            ? turn.items.map((item) => item.type === "progress" && item.progressId === action.item.progressId ? action.item : item)
+            : [...turn.items, action.item],
+        };
+      });
     case "complete_turn":
       return updateTurn(
         conversations,

@@ -152,6 +152,8 @@ export function ChatPanel({ target }: Props) {
             key={displayedConversation?.id ?? `${view}:empty`}
             turns={displayedConversation?.turns ?? []}
             onApprovalDecision={view === "chat" ? decideCommandApproval : undefined}
+            context={view === "chat" && resource ? { kind: resource.resourceKind, label: resource.label } : undefined}
+            onSuggestion={view === "chat" && canSend ? setDraft : undefined}
           />
           {view === "chat" && error && (
             <div className="chat-status" role="alert">{error}</div>

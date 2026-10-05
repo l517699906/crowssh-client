@@ -5,6 +5,7 @@ import type {
   ChatModelSelection,
   ChatTurn,
   ChatTarget,
+  ProgressTranscriptItem,
   ToolTranscriptItem,
   TranscriptExecutionStatus,
 } from "../types";
@@ -421,6 +422,36 @@ export function useChat(target?: ChatTarget) {
               createdAt,
             },
           });
+          useChatStore.getState().dispatch({
+            type: "upsert_progress",
+            conversationId: conversation.id,
+            turnId,
+            item: {
+              id: `${turnId}:progress:request`,
+              type: "progress",
+              progressId: "request",
+              title: status === "running" ? "理解请求并规划执行" : event.content || "处理完成",
+              detail: event.content,
+              status: status === "running" ? "running" : status === "error" ? "error" : "success",
+              createdAt: eventTime,
+            },
+          });
+        } else if (event.event === "round_end") {
+          flushPendingText();
+          activeTextItemId = null;
+          const step = event.stepInfo?.currentStep ?? 0;
+          const maxSteps = event.stepInfo?.maxSteps;
+          const totalToolCalls = event.stepInfo?.totalToolCalls ?? 0;
+          const progress: ProgressTranscriptItem = {
+            id: `${turnId}:progress:round:${step}`,
+            type: "progress",
+            progressId: `round:${step}`,
+            title: `第 ${step} 轮分析完成`,
+            detail: `${event.stepInfo?.shouldContinue ? "继续处理" : "进入总结"} · 已调用 ${totalToolCalls} 个工具${maxSteps ? ` · 最多 ${maxSteps} 轮` : ""}`,
+            status: "success",
+            createdAt: eventTime,
+          };
+          useChatStore.getState().dispatch({ type: "upsert_progress", conversationId: conversation.id, turnId, item: progress });
         } else if (event.event === "text") {
           const nextFullText = event.fullText ?? `${receivedText}${event.content}`;
           const chunk = nextFullText.startsWith(receivedText)
@@ -520,6 +551,15 @@ export function useChat(target?: ChatTarget) {
           });
         } else if (event.event === "done") {
           receivedDone = true;
+          useChatStore.getState().dispatch({
+            type: "upsert_progress",
+            conversationId: conversation.id,
+            turnId,
+            item: {
+              id: `${turnId}:progress:request`, type: "progress", progressId: "request",
+              title: "生成最终回答", detail: "执行步骤已完成", status: "success", createdAt: eventTime,
+            },
+          });
           const finalText = event.content || receivedText;
           if (finalText.startsWith(receivedText) && finalText.length > receivedText.length) {
             activeTextItemId ??= uid();

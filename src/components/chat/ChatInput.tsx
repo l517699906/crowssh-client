@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { BrainCircuit, Send, Square, Terminal } from "lucide-react";
 
 interface Props {
@@ -30,6 +30,14 @@ export function ChatInput({
 }: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
+  // 输入框随内容自动增高，上限由 CSS max-height 控制
+  useLayoutEffect(() => {
+    const textarea = taRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [text]);
+
   const send = () => {
     if (sendDisabled || !text.trim()) return;
     void onSend(text);
@@ -50,6 +58,7 @@ export function ChatInput({
         <textarea
           ref={taRef}
           className="chat-textarea"
+          rows={2}
           value={text}
           placeholder="输入消息，Ctrl/Command+Enter 发送"
           autoCapitalize="none"

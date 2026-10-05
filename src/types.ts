@@ -101,6 +101,14 @@ export interface StatusTranscriptItem extends TranscriptItemBase {
   content: string;
 }
 
+export interface ProgressTranscriptItem extends TranscriptItemBase {
+  type: "progress";
+  progressId: string;
+  title: string;
+  detail?: string;
+  status: "running" | "success" | "error";
+}
+
 export interface ErrorTranscriptItem extends TranscriptItemBase {
   type: "error";
   content: string;
@@ -110,6 +118,7 @@ export type TranscriptItem =
   | AssistantTextItem
   | ToolTranscriptItem
   | StatusTranscriptItem
+  | ProgressTranscriptItem
   | ErrorTranscriptItem;
 
 export interface ChatTurn {
